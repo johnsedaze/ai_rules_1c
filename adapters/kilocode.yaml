@@ -83,6 +83,6 @@ skills:
 
 mcp:
   source: "content/mcp-servers.json"
-  target: ".kilo/kilo.jsonc"
+  target: "kilo.jsonc"
   schema: mcp
   format: jsonc
