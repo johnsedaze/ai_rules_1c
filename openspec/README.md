@@ -74,7 +74,7 @@ After installation you should already see, depending on which tools are active:
 - Claude Code — `.claude/commands/opsx/{apply,archive,explore,propose}.md`
 - Codex — only SKILLs under `.codex/skills/openspec-*/SKILL.md` (Codex has no project slash commands)
 - OpenCode — `.opencode/command/opsx-{apply,archive,explore,propose}.md`
-- Kilo Code — `.kilocode/workflows/opsx-{apply,archive,explore,propose}.md`
+- Kilo Code — `.kilo/workflows/opsx-{apply,archive,explore,propose}.md`
 
 …plus matching `openspec-{propose,apply-change,archive-change,explore}/SKILL.md`
 folders under each tool's `skills/` directory. Restart your IDE for the

@@ -46,7 +46,7 @@ $script:DotMap = @{
     'claude-code' = '.claude'
     'codex'       = '.codex'
     'opencode'    = '.opencode'
-    'kilocode'    = '.kilocode'
+    'kilocode'    = '.kilo'
 }
 
 function Resolve-RepoRoot {
@@ -116,10 +116,19 @@ function Sync-ToolBundle {
     )
     $dot = $script:DotMap[$Tool]
     $sourceDir = Join-Path $ProbeRoot $dot
+
+    # For kilocode: if .kilo doesn't exist, try .kilocode (legacy path)
+    if ($Tool -eq 'kilocode' -and -not (Test-Path $sourceDir)) {
+        $altSourceDir = Join-Path $ProbeRoot '.kilocode'
+        if (Test-Path $altSourceDir) {
+            $sourceDir = $altSourceDir
+        }
+    }
+
     $targetDir = Join-Path $BundleRoot "$Tool\$dot"
 
     if (-not (Test-Path $sourceDir)) {
-        Write-Warning "  [$Tool] no $dot in probe output - skipped"
+        Write-Warning "  [$Tool] no $dot (or .kilocode for kilocode) in probe output - skipped"
         return [pscustomobject]@{ Tool = $Tool; Added = 0; Updated = 0; Removed = 0 }
     }
 
