@@ -695,17 +695,23 @@ function New-McpConfig-Kilocode {
             $cmd = @($s.command) + @($s.args)
             $entry['command'] = $cmd
         }
+        # Add required fields for Kilo Code
+        $entry['enabled'] = $false
+        $entry['timeout'] = 15000
+        
+        # Copy optional fields
         if ($s.env) { $entry['env'] = $s.env }
         if ($s.description) { $entry['description'] = $s.description }
+        if ($s.connectionId) { $entry['connectionId'] = $s.connectionId }
+        
         $mcp[$s.id] = $entry
     }
-    # instructions key ensures .kilo/rules/ files are loaded by the agent
-    # (Kilo does not auto-discover .kilo/rules/ without an explicit reference).
+    # Kilo Code requires $schema field and mcp object at root
     $root = [ordered]@{
-        instructions = @('AGENTS.md', '.kilo/rules/**/*.md')
-        mcp          = $mcp
+        '$schema' = 'https://app.kilo.ai/config.json'
+        mcp       = $mcp
     }
-    return (ConvertTo-Json $root -Depth 10)
+    return (ConvertTo-Json $root -Depth 10 -Compress:$false)
 }
 
 function New-McpConfig-OpenCode {
