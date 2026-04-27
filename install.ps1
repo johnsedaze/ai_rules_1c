@@ -683,7 +683,29 @@ function New-McpConfig-ClaudeCode {
 
 function New-McpConfig-Kilocode {
     param([array]$Servers)
-    return New-McpConfig-Cursor $Servers
+    $mcp = [ordered]@{}
+    foreach ($s in $Servers) {
+        $entry = [ordered]@{}
+        if ($s.url) {
+            $entry['type'] = 'remote'
+            $entry['url'] = $s.url
+        }
+        elseif ($s.command) {
+            $entry['type'] = 'local'
+            $cmd = @($s.command) + @($s.args)
+            $entry['command'] = $cmd
+        }
+        if ($s.env) { $entry['env'] = $s.env }
+        if ($s.description) { $entry['description'] = $s.description }
+        $mcp[$s.id] = $entry
+    }
+    # instructions key ensures .kilo/rules/ files are loaded by the agent
+    # (Kilo does not auto-discover .kilo/rules/ without an explicit reference).
+    $root = [ordered]@{
+        instructions = @('AGENTS.md', '.kilo/rules/**/*.md')
+        mcp          = $mcp
+    }
+    return (ConvertTo-Json $root -Depth 10)
 }
 
 function New-McpConfig-OpenCode {
@@ -823,7 +845,7 @@ function Get-ToolDetectionSignals {
         'claude-code' = @((Test-Path (Join-Path $Root '.claude')), (Test-Path (Join-Path $Root 'CLAUDE.md')))
         'codex'       = @((Test-Path (Join-Path $Root '.codex')))
         'opencode'    = @((Test-Path (Join-Path $Root '.opencode')), (Test-Path (Join-Path $Root 'opencode.json')))
-        'kilocode'    = @((Test-Path (Join-Path $Root '.kilocode')))
+        'kilocode'    = @((Test-Path (Join-Path $Root '.kilo')))
     }
     $detected = @()
     foreach ($t in $script:SupportedTools) {
@@ -2194,7 +2216,7 @@ function Invoke-Remove {
             'claude-code' { $toolPrefixes = @('.claude/', 'CLAUDE.md', '.mcp.json') }
             'codex'       { $toolPrefixes = @('.codex/') }
             'opencode'    { $toolPrefixes = @('.opencode/', 'opencode.json') }
-            'kilocode'    { $toolPrefixes = @('.kilocode/') }
+            'kilocode'    { $toolPrefixes = @('.kilo/') }
             'cursor'      { $toolPrefixes = @('.cursor/') }
         }
         $toRemove = @()
