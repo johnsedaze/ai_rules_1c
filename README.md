@@ -12,7 +12,7 @@
 - **Claude Code** (`.claude/rules/`, `.claude/agents/`, `.claude/commands/`)
 - **OpenAI Codex** (`.codex/skills/`)
 - **OpenCode** (`.opencode/command/`)
-- **Kilo Code** (`.kilo/rules/`, `.kilo/workflows/`)
+- **Kilo Code** (`.kilo/rules/`, `.kilo/agents/`, `.kilo/workflows/`)
 
 Один и тот же исходный набор правил из `content/` раскладывается во все активные инструменты одновременно, поэтому `AGENTS.md`, on-demand правила и описания субагентов остаются согласованными независимо от того, в каком клиенте вы работаете.
 
@@ -20,7 +20,7 @@
 
 Установка спроектирована как протокол, который выполняет сам ИИ-агент. Откройте проект в любимом ИИ-агенте (Cursor / Claude Code / Codex / OpenCode / Kilo Code) и отправьте сообщение:
 
-> Установи правила из `https://github.com/comol/ai_rules_1c` по `AGENT-INSTALL.md`.
+> Установи правила из `https://github.com/johnsedaze/ai_rules_1c` по `AGENT-INSTALL.md`.
 
 Всё. Остальное — клонирование репозитория, определение активных инструментов, миграция существующих `AGENTS.md` / `CLAUDE.md`, запросы перед разрушительными действиями — описано в [`AGENT-INSTALL.md`](AGENT-INSTALL.md), который агент прочитает сам.
 
@@ -29,14 +29,14 @@
 Если агент не справляется (ограниченная среда, нет FS-доступа, нужен детерминированный CI-запуск) — тот же протокол реализован как PowerShell-скрипт `install.ps1`:
 
 ```powershell
-git clone https://github.com/comol/ai_rules_1c.git $env:TEMP\1c-rules
+git clone https://github.com/johnsedaze/ai_rules_1c.git $env:TEMP\1c-rules
 & $env:TEMP\1c-rules\install.ps1 init -Source $env:TEMP\1c-rules
 ```
 
 Параметр `-Source` также принимает URL напрямую — в этом случае установщик сам делает shallow-clone в кэш под `$env:TEMP` (ключ кэша — хэш URL) и переиспользует его при повторных запусках; требует `git` в `PATH`:
 
 ```powershell
-.\install.ps1 init -Source https://github.com/comol/ai_rules_1c
+.\install.ps1 init -Source https://github.com/johnsedaze/ai_rules_1c
 ```
 
 Команды: `init` / `update` / `add <tool>` / `remove [<tool>]` / `doctor` / `eject`.
@@ -202,7 +202,7 @@ git clone https://github.com/comol/ai_rules_1c.git $env:TEMP\1c-rules
 
 - [vibecoding1c.ru](https://vibecoding1c.ru/) — портал по вайбкодингу для 1С: курсы, бенчмарк моделей, статьи, продукты для разработки 1С с ИИ.
 - [vibecoding1c.ru/mcp_server](https://vibecoding1c.ru/mcp_server) — пакет MCP-серверов для 1С, под который заточены правила и плейбуки этого репозитория.
-- [Telegram-канал «IT Does Matter»](https://t.me/comol_it_does_matter) — обсуждение вайбкодинга для 1С, MCP, ИИ-агентов, практик и обновлений.
+- [Telegram-канал «IT Does Matter»](https://t.me/johnsedaze_it_does_matter) — обсуждение вайбкодинга для 1С, MCP, ИИ-агентов, практик и обновлений.
 
 ## Лицензия
 
