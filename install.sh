@@ -66,7 +66,18 @@ NON_INTERACTIVE=0
 ASSUME_YES=0
 
 usage() {
-    sed -n '/^# USAGE/,/^# [A-Z]/{ /^# [A-Z]/!p }' "$0" | sed 's/^# \?//'
+    # Extract USAGE section from script comments
+    # macOS sed workaround
+    local start_line=$(grep -n '^# USAGE' "$0" | cut -d: -f1)
+    local end_line=$(grep -n '^# [A-Z]' "$0" | grep -A1 "^$start_line:" | tail -1 | cut -d: -f1)
+    if [[ -n "$start_line" && -n "$end_line" && "$start_line" -lt "$end_line" ]]; then
+        sed -n "$((start_line+1)),$((end_line-1))p" "$0" | sed 's/^# \?//'
+    else
+        # Fallback simple usage
+        echo "Usage: $0 [command] [options]"
+        echo "Commands: init, update, add, remove, doctor, eject"
+        echo "Options: --tool TOOL --tools TOOL1,TOOL2 --source PATH|URL --project-root PATH --non-interactive --assume-yes"
+    fi
     exit 0
 }
 
@@ -2354,4 +2365,13 @@ EXIT_CODE=$?
 if [[ $EXIT_CODE -ne 0 ]]; then
     write_err "Command failed with exit code $EXIT_CODE"
     exit $EXIT_CODE
+fi
+
+# If this script is in the same repo as refresh-openspec-bundle.sh, show note
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -x "$SCRIPT_DIR/tools/refresh-openspec-bundle.sh" && "$COMMAND" =~ ^(init|update)$ ]]; then
+    echo ""
+    echo "Note: To refresh the bundled OpenSpec snapshots (content/openspec-bundle/), run:"
+    echo "  ./tools/refresh-openspec-bundle.sh [--dry-run]"
+    echo "This requires Node.js + npm and the OpenSpec CLI installed globally."
 fi

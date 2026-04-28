@@ -1,7 +1,6 @@
 # Adapter: Kilo Code (VSCode extension)
 #
-# Enhanced version that analyzes tools array to create Kilo Code permissions.
-# Based on: https://kilo.ai/docs/customize/custom-subagents
+# Read by both installation channels (AI-agent installer, install.ps1 and install.sh).
 
 tool: kilocode
 schemaVersion: 3

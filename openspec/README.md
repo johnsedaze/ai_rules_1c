@@ -52,7 +52,7 @@ regenerates `openspec/project.md` from real 1C metadata signals:
 The file is tracked in `.ai-rules.json` like any other managed content. If
 you edit it manually, the installer marks it `userModified` and stops
 overwriting it. To pick up changes after editing `Configuration.xml`,
-delete `openspec/project.md` and re-run `install.ps1 update`.
+delete `openspec/project.md` and re-run `install.ps1 update` or `install.sh update`.
 
 If the project is not a 1C source dump (no `Configuration.xml`), the file
 is **not** generated.

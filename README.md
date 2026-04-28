@@ -71,7 +71,8 @@
 ├── AGENT-INSTALL.md         # инструкция установки для ИИ-агентов
 ├── USER-RULES.md            # пользовательские правила (не трогается установщиком)
 ├── memory.md                # память проекта
-├── install.ps1              # PowerShell-установщик
+├── install.ps1              # PowerShell-установщик (Windows)
+├── install.sh                # Bash-установщик (Unix/macOS/Linux)
 ├── .dev.env.example         # шаблон параметров проекта
 ├── adapters/                # адаптеры под инструменты (cursor, claude-code, codex, opencode, kilocode)
 ├── content/
@@ -82,12 +83,12 @@
 │   ├── openspec-bundle/     # снапшот вывода `openspec init` для каждого инструмента
 │   └── mcp-servers.json     # каталог MCP-серверов экосистемы 1С
 ├── openspec/                # OpenSpec-воркспейс (specs/, changes/, project.md)
-└── tools/                   # вспомогательные скрипты (refresh-openspec-bundle.ps1)
+└── tools/                   # вспомогательные скрипты (refresh-openspec-bundle.ps1, refresh-openspec-bundle.sh)
 ```
 
 ## Что появится в проекте после установки
 
-Независимо от канала установки (агент или `install.ps1`) на диске будет:
+Независимо от канала установки (агент, `install.ps1` или `install.sh`) на диске будет:
 
 - `AGENTS.md`, `USER-RULES.md`, `memory.md` — **в корне проекта**. Это требование инструментов: Cursor, Claude Code, Codex, OpenCode, Kilo Code читают `AGENTS.md` именно из корня; перенос в `.cursor/`/`.claude/` отключит загрузку.
 - директории активных инструментов (`.cursor/`, `.claude/`, `.codex/`, `.opencode/`, `.kilo/`) — для каждого детектированного. On-demand правила лежат в `<tool>/rules/` соответствующего инструмента, не дублируются в отдельный «общий» каталог.
@@ -96,7 +97,7 @@
 
 `AGENTS.md` ссылается на on-demand правила по пути одного канонического каталога (приоритет `cursor → claude-code → kilocode → opencode → codex`); установщик подставляет нужный путь в шаблон при размещении. При установке только под один инструмент в проекте появится ровно одна тулзовая директория плюс `AGENTS.md`/`USER-RULES.md`/`memory.md` в корне — без дополнительных общих папок.
 
-Если активен ровно один инструмент, агент-установщик не задаёт уточняющих вопросов. PowerShell-fallback дополнительно поддерживает флаги `-Tools cursor,claude-code`, `-NonInteractive`, `-AssumeYes`. Полный протокол и описание манифеста — в [`AGENT-INSTALL.md`](AGENT-INSTALL.md).
+Если активен ровно один инструмент, агент-установщик не задаёт уточняющих вопросов. CLI‑установщики дополнительно поддерживают флаги `-Tools cursor,claude-code` / `--tools cursor,claude-code`, `-NonInteractive` / `--non-interactive`, `-AssumeYes` / `--assume-yes`. Полный протокол и описание манифеста — в [`AGENT-INSTALL.md`](AGENT-INSTALL.md).
 
 ## Свод on-demand правил (`content/rules/`)
 

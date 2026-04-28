@@ -1,7 +1,7 @@
 # Adapter: OpenAI Codex CLI
 #
 # Describes how to copy and adapt files from content/ for Codex CLI.
-# Read by both installation channels (AI-agent installer and install.ps1).
+# Read by both installation channels (AI-agent installer, install.ps1 and install.sh).
 #
 # Schema: see ARCHITECTURE.md §7 and §7.1 (closed operation set).
 # Notes:
