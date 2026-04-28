@@ -4,12 +4,13 @@ This document describes the installation, update and migration mechanics of the 
 
 ## Installation channels
 
-`1c-rules` ships with two equivalent channels. They produce the **same** on-disk layout and the **same** `.ai-rules.json` manifest:
+`1c-rules` ships with three equivalent channels. They produce the **same** on-disk layout and the **same** `.ai-rules.json` manifest:
 
 1. **Agent-driven channel (default).** The AI agent reads this document and `adapters/*.yaml`, then places files into the project. No external CLI required. This is the default when the user asks the agent to install rules.
-2. **PowerShell channel (fallback).** `install.ps1` implements the same protocol deterministically through a CLI. Use it when the agent is unavailable, the environment is restricted, or you want a reproducible CI/CD-friendly run.
+2. **PowerShell channel (fallback).** `install.ps1` implements the same protocol deterministically through a CLI. Use it when the agent is unavailable, the environment is restricted, or you want a reproducible CI/CD-friendly run on Windows.
+3. **Bash channel (Unix / macOS).** `install.sh` implements the same protocol in Bash. Use it when PowerShell is unavailable on Unix-like systems (macOS, Linux), or when you prefer Bash-based tooling.
 
-A project installed by one channel can later be updated by the other.
+A project installed by one channel can later be updated by another.
 
 ## Agent protocol (read this if you are the agent)
 
@@ -90,9 +91,11 @@ If a target file already exists with user modifications (different from any prio
 - **Manifest is authoritative** — if `.ai-rules.json` exists, trust it for "what is currently managed". A file not in the manifest is a foreign file: record it under `foreignFiles`, do not touch it.
 - **Skip-if-exists for OpenSpec** — never overwrite specs or change proposals.
 
-## PowerShell fallback (`install.ps1`)
+## CLI fallback installers
 
-If the agent cannot do the placement (no FS access, restricted environment, CI run), use the PowerShell channel:
+If the agent cannot do the placement (no FS access, restricted environment, CI run), use the CLI installers.
+
+### PowerShell (`install.ps1`) — Windows
 
 ```powershell
 git clone https://github.com/johnsedaze/ai_rules_1c.git $env:TEMP\1c-rules
@@ -106,25 +109,55 @@ The script implements the protocol above. Notes:
 - Commands: `init` / `update` / `add <tool>` / `remove [<tool>]` / `doctor` (read-only diagnostic) / `eject` (delete the manifest, leave files in place).
 - Flags: `-Tools cursor,claude-code` (explicit list), `-NonInteractive` (auto-resolve prompts), `-AssumeYes` (answer yes to confirmations but still pause on destructive conflicts unless `-NonInteractive` is also set).
 
-### Do NOT pipe `install.ps1` into `Invoke-Expression`
+### Bash (`install.sh`) — Unix / macOS / Linux
 
-`install.ps1` declares `[CmdletBinding()]` and `param(...)` at the top. These are valid only at the top of a `.ps1` file executed as a script — they are **not** valid inside `Invoke-Expression` (`iex`) of raw text. The following one-liners will fail with `Unexpected attribute 'CmdletBinding'` / `Unexpected token 'param'` and **must not be used**:
-
-```powershell
-# WRONG — will throw "Unexpected attribute 'CmdletBinding'"
-iex (irm https://raw.githubusercontent.com/johnsedaze/ai_rules_1c/main/install.ps1)
-iex "$(irm https://raw.githubusercontent.com/johnsedaze/ai_rules_1c/main/install.ps1) init"
+```bash
+git clone https://github.com/johnsedaze/ai_rules_1c.git /tmp/1c-rules
+cd /tmp/1c-rules
+./install.sh init --source /tmp/1c-rules
 ```
 
-Always clone first and run the script as a file (the canonical form shown above). If a no-`git` environment forces a one-liner, use a script block — it preserves `param(...)` semantics — but still requires a local clone for `-Source`:
+The Bash script has the same command set as PowerShell installer:
 
-```powershell
-$tmp = Join-Path $env:TEMP '1c-rules'
-git clone https://github.com/johnsedaze/ai_rules_1c.git $tmp
-& ([scriptblock]::Create((Get-Content "$tmp\install.ps1" -Raw))) init -Source $tmp
-```
+- Commands: `init`, `update`, `add`, `remove`, `doctor`, `eject`.
+- Options: `--tool TOOL`, `--tools TOOL1,TOOL2`, `--source PATH|URL`, `--project-root PATH`, `--non-interactive`, `--assume-yes`.
+- `--source` accepts a local path or a URL; if a URL is supplied, the installer shallow‑clones it into a cache directory (`$TMPDIR/1c-rules-source-<hash>`) and re‑uses it on future runs. The URL mode requires `git` in `PATH`.
+- The installer is pure Bash with Python3 for YAML/JSON parsing; works on macOS (Homebrew/Xcode), most Linux distributions, and Windows WSL.
 
-There is no supported way to run `install.ps1` directly from the GitHub URL without a local clone — the script reads `content/` and `adapters/` from `-Source`.
+### Security notes for CLI installers
+
+Both CLI installers (`install.ps1`, `install.sh`) must be cloned locally before execution, because they read `content/` and `adapters/` from the `-Source` path.
+
+- **PowerShell** (`install.ps1`) declares `[CmdletBinding()]` and `param(...)` at the top. These are valid only at the top of a `.ps1` file executed as a script — they are **not** valid inside `Invoke-Expression` (`iex`) of raw text. The following one-liners will fail with `Unexpected attribute 'CmdletBinding'` / `Unexpected token 'param'` and **must not be used**:
+
+  ```powershell
+  # WRONG — will throw "Unexpected attribute 'CmdletBinding'"
+  iex (irm https://raw.githubusercontent.com/johnsedaze/ai_rules_1c/main/install.ps1)
+  iex "$(irm https://raw.githubusercontent.com/johnsedaze/ai_rules_1c/main/install.ps1) init"
+  ```
+
+  Always clone first and run the script as a file. If a no‑`git` environment forces a one‑liner, use a script block — it preserves `param(...)` semantics — but still requires a local clone:
+
+  ```powershell
+  $tmp = Join-Path $env:TEMP '1c-rules'
+  git clone https://github.com/johnsedaze/ai_rules_1c.git $tmp
+  & ([scriptblock]::Create((Get-Content "$tmp\install.ps1" -Raw))) init -Source $tmp
+  ```
+
+- **Bash** (`install.sh`) can be downloaded via `curl` and executed, but the official recommendation is still to clone first for reproducibility and because the source repository is needed anyway. Direct URL execution works only when the installer does not require the `--source` flag and the script is run from inside the cloned repository.
+
+  ```bash
+  # Not officially supported but works if you are already inside a clone:
+  curl -fsSL https://raw.githubusercontent.com/johnsedaze/ai_rules_1c/main/install.sh | bash -s init --source .
+  ```
+
+  The installer will refuse to run if `--source` points to a URL it cannot clone and `content/` is missing. The safe, reproducible method:
+
+  ```bash
+  git clone https://github.com/johnsedaze/ai_rules_1c.git /tmp/1c-rules
+  cd /tmp/1c-rules
+  ./install.sh init --source /tmp/1c-rules
+  ```
 
 ## File ownership
 

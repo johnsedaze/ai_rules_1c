@@ -1,0 +1,47 @@
+{
+  "$schema": "https://app.kilo.ai/config.json",
+  "mcp": {
+    "1c-code-metadata-mcp": {
+      "type": "remote",
+      "url": "http://localhost:8000/mcp",
+      "enabled": false,
+      "timeout": 15000
+    },
+    "1c-syntax-checker-mcp": {
+      "type": "remote",
+      "url": "http://localhost:8002/mcp",
+      "enabled": true,
+      "timeout": 15000
+    },
+    "1C-docs-mcp": {
+      "type": "remote",
+      "url": "http://localhost:8003/mcp",
+      "enabled": true,
+      "timeout": 15000
+    },
+    "1c-templates-mcp": {
+      "type": "remote",
+      "url": "http://localhost:8004/mcp",
+      "enabled": true,
+      "timeout": 15000
+    },
+    "1c-graph-metadata-mcp": {
+      "type": "remote",
+      "url": "http://localhost:8006/mcp",
+      "enabled": false,
+      "timeout": 15000
+    },
+    "1c-code-check-mcp": {
+      "type": "remote",
+      "url": "http://localhost:8007/mcp",
+      "enabled": true,
+      "timeout": 15000
+    },
+    "1c-ssl-mcp": {
+      "type": "remote",
+      "url": "http://localhost:8008/mcp",
+      "enabled": true,
+      "timeout": 15000
+    }
+  }
+}

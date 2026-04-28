@@ -24,19 +24,32 @@
 
 Всё. Остальное — клонирование репозитория, определение активных инструментов, миграция существующих `AGENTS.md` / `CLAUDE.md`, запросы перед разрушительными действиями — описано в [`AGENT-INSTALL.md`](AGENT-INSTALL.md), который агент прочитает сам.
 
-### Fallback: PowerShell-установщик
+### Fallback: CLI-установщики
 
-Если агент не справляется (ограниченная среда, нет FS-доступа, нужен детерминированный CI-запуск) — тот же протокол реализован как PowerShell-скрипт `install.ps1`:
+Если агент не справляется (ограниченная среда, нет FS-доступа, нужен детерминированный CI-запуск) — тот же протокол реализован как:
 
-```powershell
-git clone https://github.com/johnsedaze/ai_rules_1c.git $env:TEMP\1c-rules
-& $env:TEMP\1c-rules\install.ps1 init -Source $env:TEMP\1c-rules
-```
+1. **PowerShell-скрипт `install.ps1`** (Windows):
+   
+   ```powershell
+   git clone https://github.com/johnsedaze/ai_rules_1c.git $env:TEMP\1c-rules
+   & $env:TEMP\1c-rules\install.ps1 init -Source $env:TEMP\1c-rules
+   ```
 
-Параметр `-Source` также принимает URL напрямую — в этом случае установщик сам делает shallow-clone в кэш под `$env:TEMP` (ключ кэша — хэш URL) и переиспользует его при повторных запусках; требует `git` в `PATH`:
+2. **Bash-скрипт `install.sh`** (Unix/macOS/Linux):
+
+   ```bash
+   git clone https://github.com/johnsedaze/ai_rules_1c.git /tmp/1c-rules
+   ./install.sh init --source /tmp/1c-rules
+   ```
+
+Параметр `-Source` / `--source` также принимает URL напрямую — в этом случае установщик сам делает shallow-clone в кэш под временную директорию (ключ кэша — хэш URL) и переиспользует его при повторных запусках; требует `git` в `PATH`:
 
 ```powershell
 .\install.ps1 init -Source https://github.com/johnsedaze/ai_rules_1c
+```
+
+```bash
+./install.sh init --source https://github.com/johnsedaze/ai_rules_1c
 ```
 
 Команды: `init` / `update` / `add <tool>` / `remove [<tool>]` / `doctor` / `eject`.
@@ -47,7 +60,7 @@ git clone https://github.com/johnsedaze/ai_rules_1c.git $env:TEMP\1c-rules
 - **Пользовательские правила** — `USER-RULES.md`: пустой по умолчанию файл для команды/проекта. Установщик его не перезаписывает.
 - **Память проекта** — `memory.md`: рабочая память ИИ для долгоживущих фактов, корректировок и проектных особенностей.
 - **Параметры проекта** — `.dev.env.example`: шаблон параметров (`PREFIX`, `COMPANY`, `DEVELOPER`, `PLATFORM_VERSION`, шаблоны комментариев, политика размещения новых объектов). Скопировать в `.dev.env` и заполнить.
-- **Установщик** — `install.ps1`: PowerShell-инсталлятор (команды `init` / `update` / `add` / `remove` / `doctor` / `eject`).
+- **Установщики** — `install.ps1` (PowerShell, Windows), `install.sh` (Bash, Unix/macOS): CLI-инсталляторы (команды `init` / `update` / `add` / `remove` / `doctor` / `eject`).
 - **Спецификация установщика** — `AGENT-INSTALL.md`: что пишется/обновляется на диске, как происходит миграция и что принадлежит установщику.
 
 ## Структура репозитория
