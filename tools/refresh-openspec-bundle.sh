@@ -127,8 +127,10 @@ function invoke_openspec_init() {
     local exit_code
     
     pushd "$work_dir" > /dev/null
+    set +e
     output=$(openspec init --tools "$OPENSPEC_TOOLS_ARG" 2>&1)
     exit_code=$?
+    set -e
     popd > /dev/null
     
     if [[ $exit_code -ne 0 ]]; then
@@ -290,7 +292,7 @@ else
 fi
 
 if [[ "$DRY_RUN" == "true" ]]; then
-    echo "$VER_FILE" | grep -q "$CLI_VERSION" || true
+    :
 else
     echo -n "$CLI_VERSION" > "$VER_FILE"
 fi

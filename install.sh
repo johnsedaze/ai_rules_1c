@@ -1567,50 +1567,41 @@ invoke_openspec_artifacts() {
     local source_root="$2"
     local active_tools="$3"
 
-    # Copy openspec-specific commands/skills for each active tool
-    local openspec_dir="$source_root/openspec"
-    [[ ! -d "$openspec_dir" ]] && return
+    local bundle_root="$source_root/content/openspec-bundle"
+    if [[ ! -d "$bundle_root" ]]; then
+        write_warn "OpenSpec artefacts: bundle not found at $bundle_root — skipped."
+        return
+    fi
 
+    local total_copied=0
     for tool in $active_tools; do
-        local adapter_json
-        adapter_json="$(py_parse_adapter "$source_root/adapters/$tool.yaml" 2>/dev/null || echo '{}')"
+        local tool_bundle="$bundle_root/$tool"
+        [[ ! -d "$tool_bundle" ]] && continue
 
-        # openspec commands
-        local ospec_cmds_dir="$openspec_dir/commands"
-        local cmds_copy_to
-        cmds_copy_to="$(printf '%s' "$adapter_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('commands',{}).get('copyTo',''))" 2>/dev/null || echo '')"
-        if [[ -n "$cmds_copy_to" && -d "$ospec_cmds_dir" ]]; then
-            while IFS= read -r f; do
-                local name
-                name="$(basename "${f%.md}")"
-                local target
-                target="$(resolve_copyto_path "$cmds_copy_to" "$name")"
-                place_content_file "$root" "$f" "$target" 'transform' '' 'null' "openspec/commands/$(basename "$f")"
-            done < <(find "$ospec_cmds_dir" -maxdepth 1 -name '*.md' -type f 2>/dev/null)
-        fi
+        local tool_copied=0
+        while IFS= read -r -d '' f; do
+            local rel target_rel
+            rel="$(python3 -c "import os; print(os.path.relpath('$f', '$tool_bundle').replace(chr(92), '/'))")"
+            target_rel="$rel"
+            place_content_file "$root" "$f" "$target_rel" 'verbatim' '' 'null' "content/openspec-bundle/$tool/$rel"
+            tool_copied=$((tool_copied + 1))
+        done < <(find "$tool_bundle" -type f -print0)
 
-        # openspec skills
-        local ospec_skills_dir="$openspec_dir/skills"
-        local skills_copy_to
-        skills_copy_to="$(printf '%s' "$adapter_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('skills',{}).get('copyTo','').rstrip('/'))" 2>/dev/null || echo '')"
-        if [[ -n "$skills_copy_to" && -d "$ospec_skills_dir" ]]; then
-            while IFS= read -r skill_dir; do
-                local skill_name
-                skill_name="$(basename "$skill_dir")"
-                [[ ! -f "$skill_dir/SKILL.md" ]] && continue
-                local target_dir
-                target_dir="$(resolve_copyto_path "$skills_copy_to" "$skill_name")"
-                place_skill_dir "$root" "$skill_dir" "$target_dir" "openspec/skills/$skill_name"
-            done < <(find "$ospec_skills_dir" -maxdepth 1 -mindepth 1 -type d 2>/dev/null)
+        if [[ $tool_copied -gt 0 ]]; then
+            write_info "  [$tool] OpenSpec artefacts: $tool_copied placed"
         fi
+        total_copied=$((total_copied + tool_copied))
     done
 
     # Record openspec artefacts bundle version if present
-    local bundle_version_file="$openspec_dir/BUNDLE_VERSION"
+    local bundle_version_file="$bundle_root/version.txt"
     if [[ -f "$bundle_version_file" ]]; then
         local bver
         bver="$(cat "$bundle_version_file" | tr -d '[:space:]')"
         manifest_patch "$root" "[{\"op\":\"set\",\"path\":[\"integrations\",\"openspec\",\"artifactsBundleVersion\"],\"value\":\"$bver\"}]"
+        write_info "  OpenSpec artefacts: $total_copied placed (bundle v$bver)"
+    else
+        write_info "  OpenSpec artefacts: $total_copied placed"
     fi
 }
 
