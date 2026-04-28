@@ -1635,7 +1635,7 @@ function Invoke-PlacePhase {
 # Priority order for choosing the "canonical" rules directory referenced by
 # AGENTS.md. Lower index = higher priority. The first active tool in this
 # order whose adapter defines a `rules.copyTo` wins.
-$script:RulesDirPriority = @('cursor', 'claude-code', 'kilo', 'opencode', 'codex')
+$script:RulesDirPriority = @('cursor', 'claude-code', 'kilocode', 'opencode', 'codex')
 
 function Resolve-CanonicalRulesLayout {
     # Returns @{ Dir = <path>; Ext = <ext-without-dot> } for the highest-priority

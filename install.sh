@@ -206,7 +206,8 @@ read_text_file() {
 # All complex parsing (YAML, frontmatter, JSON manifest, template rendering)
 # is delegated to Python3, which is standard on macOS (Xcode CLT / Homebrew).
 
-_py3_engine=$(cat <<'PYEOF'
+_py3_engine_file="${TMPDIR:-/tmp}/1c-rules-py-engine-$$.py"
+cat >"$_py3_engine_file" <<'PYEOF'
 import sys, json, os, re, hashlib, datetime
 from collections import OrderedDict
 
@@ -830,13 +831,11 @@ if __name__ == '__main__':
         print(json.dumps(result, ensure_ascii=False))
 
 PYEOF
-)
+trap 'rm -f "$_py3_engine_file"' EXIT
 
 # Helper: call the Python3 engine
 _py3() {
-    python3 - "$@" <<EOF
-$_py3_engine
-EOF
+    python3 "$_py3_engine_file" "$@"
 }
 
 # ============================================================================
@@ -844,82 +843,82 @@ EOF
 # ============================================================================
 
 py_parse_adapter() {
-    python3 -c "$_py3_engine" parse_adapter "$1"
+    _py3 parse_adapter "$1"
 }
 
 py_split_frontmatter() {
     # stdin: file content; stdout: JSON {"frontmatter":..., "body":...}
-    python3 -c "$_py3_engine" split_frontmatter
+    _py3 split_frontmatter
 }
 
 py_apply_fm_ops() {
     # stdin: JSON {"source":..., "ops":...}; stdout: JSON
-    python3 -c "$_py3_engine" apply_fm_ops
+    _py3 apply_fm_ops
 }
 
 py_format_frontmatter() {
     # stdin: JSON dict; stdout: YAML frontmatter block
-    python3 -c "$_py3_engine" format_frontmatter
+    _py3 format_frontmatter
 }
 
 py_codex_template() {
     # stdin: JSON {"template":..., "fm":..., "body":...}
-    python3 -c "$_py3_engine" codex_template
+    _py3 codex_template
 }
 
 py_mcp_config() {
     # $1: tool_id; stdin: JSON array of servers
-    python3 -c "$_py3_engine" mcp_config "$1"
+    _py3 mcp_config "$1"
 }
 
 py_read_manifest() {
-    python3 -c "$_py3_engine" read_manifest "$1" "$MANIFEST_FILE_NAME"
+    _py3 read_manifest "$1" "$MANIFEST_FILE_NAME"
 }
 
 py_write_manifest() {
     # stdin: JSON manifest
-    python3 -c "$_py3_engine" write_manifest "$1" "$MANIFEST_FILE_NAME"
+    _py3 write_manifest "$1" "$MANIFEST_FILE_NAME"
 }
 
 py_new_manifest() {
     # stdin: JSON {"source":..,"version":..,"protocol":..,"channel":..}
-    python3 -c "$_py3_engine" new_manifest
+    _py3 new_manifest
 }
 
 py_manifest_get() {
     # $1: root $2: jq-style path like .tools
-    python3 -c "$_py3_engine" manifest_get "$1" "$MANIFEST_FILE_NAME" "$2"
+    _py3 manifest_get "$1" "$MANIFEST_FILE_NAME" "$2"
 }
 
 py_json_patch() {
     # stdin: manifest JSON; $1: ops JSON array
-    python3 -c "$_py3_engine" json_patch "$1"
+    _py3 json_patch "$1"
 }
 
 py_string_sha256() {
-    python3 -c "$_py3_engine" string_sha256 "$1"
+    _py3 string_sha256 "$1"
 }
 
 py_read_mcp_servers() {
-    python3 -c "$_py3_engine" read_mcp_servers "$1"
+    _py3 read_mcp_servers "$1"
 }
 
 py_scan_integrations() {
-    python3 -c "$_py3_engine" scan_integrations "$1"
+    _py3 scan_integrations "$1"
 }
 
 py_scan_foreign() {
     # stdin: JSON
-    python3 -c "$_py3_engine" scan_foreign
+    _py3 scan_foreign
 }
 
 py_detect_1c() {
-    python3 -c "$_py3_engine" detect_1c "$1"
+    _py3 detect_1c "$1"
 }
 
 py_format_1c_md() {
     # stdin: JSON info
-    python3 -c "$_py3_engine" format_1c_md
+    _py3 format_1c_md
 }
 
 # ============================================================================
@@ -1127,12 +1126,14 @@ place_artifact_file() {
 
     # Check userModified
     local is_user_modified
-    is_user_modified="$(python3 -c "
-import json, sys
-with open('$manifest_file') as f: m = json.load(f)
-e = m.get('files', {}).get('$target_rel', {})
+    is_user_modified="$(python3 - "$manifest_file" "$target_rel" <<'PY' 2>/dev/null || echo '0'
+import json,sys
+with open(sys.argv[1], encoding='utf-8') as f:
+    m=json.load(f)
+e=m.get('files', {}).get(sys.argv[2], {})
 print('1' if e.get('userModified') else '0')
-" 2>/dev/null || echo '0')"
+PY
+)"
     [[ "$is_user_modified" == '1' ]] && return
 
     # Determine absolute target path
@@ -1154,19 +1155,21 @@ print('1' if e.get('userModified') else '0')
 
     if [[ "$mode" == 'rebuild-toml' ]]; then
         local rendered
-        rendered="$(printf '%s' "{\"template\":$(printf '%s' "$template" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))"),\"fm\":$fm_json,\"body\":$(printf '%s' "$body" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")}" | py_codex_template)"
+        local template_json body_json payload_json
+        template_json="$(printf '%s' "$template" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")"
+        body_json="$(printf '%s' "$body" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")"
+        payload_json="{\"template\":$template_json,\"fm\":$fm_json,\"body\":$body_json}"
+        rendered="$(printf '%s' "$payload_json" | py_codex_template)"
         printf '%s' "$rendered" > "$abs_target"
     elif [[ "$mode" == 'verbatim' ]]; then
         cp -f "$source_path" "$abs_target"
     else
         # transform mode: apply frontmatter ops then write
         local ops_json
-        ops_json="$(python3 -c "
-import json, sys
-with open('$manifest_file') as f: m = json.load(f)
-# Get adapter ops from content_source lookup - passed via fm_json
+        ops_json="$(python3 - <<'PY' 2>/dev/null || echo 'null'
 print('null')
-" 2>/dev/null || echo 'null')"
+PY
+)"
 
         local new_fm
         new_fm="$(printf '%s' "{\"source\":$fm_json,\"ops\":null}" | py_apply_fm_ops)"
@@ -1235,7 +1238,11 @@ print('1' if e.get('userModified') else '0')
         fm_json="$(printf '%s' "$parsed" | python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps(d['frontmatter']))")"
         body="$(printf '%s' "$parsed" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['body'])")"
         local rendered
-        rendered="$(printf '%s' "{\"template\":$(printf '%s' "$template" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))"),\"fm\":$fm_json,\"body\":$(printf '%s' "$body" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")}" | py_codex_template)"
+        local template_json body_json payload_json
+        template_json="$(printf '%s' "$template" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")"
+        body_json="$(printf '%s' "$body" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")"
+        payload_json="{\"template\":$template_json,\"fm\":$fm_json,\"body\":$body_json}"
+        rendered="$(printf '%s' "$payload_json" | py_codex_template)"
         printf '%s' "$rendered" > "$abs_target"
     else
         # transform: parse frontmatter, apply ops, re-serialize
@@ -1250,8 +1257,7 @@ print('1' if e.get('userModified') else '0')
         new_fm="$(printf '%s' "{\"source\":$fm_json,\"ops\":$fm_ops_json}" | py_apply_fm_ops)"
         local fm_text
         fm_text="$(printf '%s' "$new_fm" | py_format_frontmatter)"
-        if [[ -n "$fm_text" && "$fm_text" != '---\n---' && "$fm_text" != '---
----' ]]; then
+        if [[ -n "$fm_text" && "$fm_text" != $'---\n---' ]]; then
             printf '%s\n%s' "$fm_text" "$body" > "$abs_target"
         else
             printf '%s' "$body" > "$abs_target"
@@ -1443,7 +1449,7 @@ invoke_mcp_phase() {
 # SECTION 12: AGENTS.MD (STATIC COPY)
 # ============================================================================
 
-RULES_DIR_PRIORITY='cursor claude-code kilo opencode codex'
+RULES_DIR_PRIORITY='cursor claude-code kilocode opencode codex'
 
 resolve_canonical_rules_layout() {
     local active_tools="$1"
@@ -1644,21 +1650,28 @@ invoke_openspec_project_md() {
     manifest_patch "$root" "[{\"op\":\"set\",\"path\":[\"integrations\",\"openspec\",\"projectMdGenerated\"],\"value\":true}]"
 
     local summary
-    summary="$(printf '%s' "$info_json" | python3 -c "
+    summary="$(printf '%s' "$info_json" | python3 - <<'PY'
 import json,sys
 info=json.load(sys.stdin)
 parts=[]
-if info.get('Synonym'): parts.append(info['Synonym'])
-elif info.get('Name'): parts.append(info['Name'])
-if info.get('PlatformVersion'): parts.append('8.3.x: '+info['PlatformVersion'])
+if info.get('Synonym'):
+    parts.append(info['Synonym'])
+elif info.get('Name'):
+    parts.append(info['Name'])
+if info.get('PlatformVersion'):
+    parts.append('8.3.x: '+info['PlatformVersion'])
 if info.get('BspDetected'):
     bsp='БСП'
-    if info.get('BspVersion'): bsp+=' '+info['BspVersion']
+    if info.get('BspVersion'):
+        bsp+=' '+info['BspVersion']
     parts.append(bsp)
-if info.get('FormMode'): parts.append('формы: '+info['FormMode'])
-if info.get('IsExtension'): parts.append('CFE')
+if info.get('FormMode'):
+    parts.append('формы: '+info['FormMode'])
+if info.get('IsExtension'):
+    parts.append('CFE')
 print(' | '.join(parts))
-")"
+PY
+)"
     write_info "  OpenSpec project.md: $summary"
 }
 
@@ -1707,18 +1720,18 @@ invoke_verify() {
     local mf="$root/$MANIFEST_FILE_NAME"
     [[ ! -f "$mf" ]] && echo '{"ok":true,"count":0,"mismatches":[]}' && return
 
-    python3 -c "
-import json, os, hashlib
-
+    python3 - "$root" "$mf" <<'PY'
+import json, os, hashlib, sys
 def file_sha256(path):
     h = hashlib.sha256()
     with open(path, 'rb') as f:
-        for chunk in iter(lambda: f.read(65536), b''): h.update(chunk)
+        for chunk in iter(lambda: f.read(65536), b''):
+            h.update(chunk)
     return h.hexdigest()
-
-root = '$root'
-mf = '$mf'
-with open(mf) as f: m = json.load(f)
+root = sys.argv[1]
+mf = sys.argv[2]
+with open(mf, encoding='utf-8') as f:
+    m = json.load(f)
 mismatches = []
 count = 0
 for rel, entry in m.get('files', {}).items():
@@ -1734,7 +1747,7 @@ for rel, entry in m.get('files', {}).items():
     if actual != expected:
         mismatches.append('hash diff: ' + rel)
 print(json.dumps({'ok': len(mismatches) == 0, 'count': count, 'mismatches': mismatches}))
-"
+PY
 }
 
 # ============================================================================
@@ -1766,37 +1779,25 @@ cmd_init() {
     write_info "Active tools: $active_tools"
 
     write_section 'Phase 2-3: Scan foreign files + integrations'
-    local adapters_json='{}'
-    local managed_files='[]'
     local foreign_json
-    foreign_json="$(printf '%s' "{\"root\":\"$root\",\"activeTools\":[$(echo "$active_tools" | python3 -c "import sys,json; print(','.join(json.dumps(t) for t in sys.stdin.read().split()))")],\"managedFiles\":[],\"adapters\":$(python3 -c "
-import json, sys, os
-tools='$active_tools'.split()
-adapters={}
-for t in tools:
-    p=os.path.join('$source_root','adapters',t+'.yaml')
-    if os.path.isfile(p):
-        import subprocess
-        r=subprocess.run(['python3','-c','$_py3_engine','parse_adapter',p],capture_output=True,text=True)
-        try: adapters[t]=json.loads(r.stdout)
-        except: adapters[t]={}
-print(json.dumps(adapters))
-")}" | py_scan_foreign)"
+    foreign_json="$(invoke_scan_foreign_for_tools "$root" "$active_tools" "$source_root")"
     local integrations_json
     integrations_json="$(py_scan_integrations "$root")"
 
     # Report
-    python3 -c "
-import json
-f=json.loads('$(printf '%s' "$foreign_json" | sed "s/'/\\\\'/g")')
+    python3 - "$foreign_json" <<'PY' 2>/dev/null || true
+import json,sys
+f=json.loads(sys.argv[1])
 for t,files in f.items():
-    if files: print(f'  foreign[{t}]: {len(files)} file(s)')
-"  2>/dev/null || true
-    python3 -c "
-import json
-i=json.loads($(printf '%s' "$integrations_json" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))"))
-if 'openspec' in i: print(f'  integration: openspec ({len(i[\"openspec\"].get(\"files\",[]))} files)')
-" 2>/dev/null || true
+    if files:
+        print(f"  foreign[{t}]: {len(files)} file(s)")
+PY
+    python3 - "$integrations_json" <<'PY' 2>/dev/null || true
+import json,sys
+i=json.loads(sys.argv[1])
+if 'openspec' in i:
+    print(f"  integration: openspec ({len(i['openspec'].get('files',[]))} files)")
+PY
 
     write_section 'Phase 4: Plan'
     write_info "Will write per-tool files into: .$(echo "$active_tools" | tr ' ' ',')"
@@ -2005,13 +2006,16 @@ cmd_update() {
     # Preserve only userModified entries, clear the rest
     manifest_patch "$root" "[{\"op\":\"set\",\"path\":[\"foreignFiles\"],\"value\":$foreign_json},{\"op\":\"set\",\"path\":[\"integrations\"],\"value\":$integrations_json}]"
     # Clear non-userModified file entries (they'll be re-written by place)
-    python3 -c "
-import json
-mf='$root/$MANIFEST_FILE_NAME'
-with open(mf) as f: m=json.load(f)
+    python3 - "$root/$MANIFEST_FILE_NAME" <<'PY'
+import json,sys
+mf=sys.argv[1]
+with open(mf, encoding='utf-8') as f:
+    m=json.load(f)
 m['files']={k:v for k,v in m.get('files',{}).items() if v.get('userModified')}
-with open(mf,'w') as f: json.dump(m,f,indent=2,ensure_ascii=False); f.write('\n')
-"
+with open(mf, 'w', encoding='utf-8') as f:
+    json.dump(m,f,indent=2,ensure_ascii=False)
+    f.write('\n')
+PY
 
     write_section 'Place (update)'
     invoke_place_phase "$root" "$source_root" "$active_tools"
@@ -2061,20 +2065,23 @@ invoke_scan_foreign_for_tools() {
     local managed_files
     managed_files="$(python3 -c "import json; m=json.load(open('$mf')) if __import__('os').path.isfile('$mf') else {}; print(json.dumps(list(m.get('files',{}).keys())))" 2>/dev/null || echo '[]')"
 
-    local adapters_json
-    adapters_json="$(python3 -c "
-import json, sys, os, subprocess
-tools='$active_tools'.split()
-engine=open('/dev/stdin').read()
-adapters={}
-for t in tools:
-    p=os.path.join('$source_root','adapters',t+'.yaml')
-    if os.path.isfile(p):
-        r=subprocess.run(['python3','-c',engine,'parse_adapter',p],capture_output=True,text=True)
-        try: adapters[t]=json.loads(r.stdout)
-        except: adapters[t]={}
-print(json.dumps(adapters))
-" <<< "$_py3_engine")"
+    local adapters_json='{}'
+    for t in $active_tools; do
+        local p="$source_root/adapters/$t.yaml"
+        local adapter_obj='{}'
+        if [[ -f "$p" ]]; then
+            adapter_obj="$(py_parse_adapter "$p" 2>/dev/null || echo '{}')"
+        fi
+        adapters_json="$(python3 - "$adapters_json" "$t" "$adapter_obj" <<'PY'
+import json,sys
+acc=json.loads(sys.argv[1])
+tool=sys.argv[2]
+obj=json.loads(sys.argv[3])
+acc[tool]=obj
+print(json.dumps(acc))
+PY
+)"
+    done
 
     local tools_arr
     tools_arr="$(echo "$active_tools" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().split()))")"
@@ -2171,17 +2178,19 @@ cmd_remove() {
         esac
 
         local to_remove
-        to_remove="$(printf '%s' "$manifest_json" | python3 -c "
+        to_remove="$(printf '%s' "$manifest_json" | python3 - "$tool_prefixes" <<'PY'
 import json,sys
 m=json.load(sys.stdin)
-prefixes='$tool_prefixes'.split()
+prefixes=sys.argv[1].split()
 to_remove=[]
 for rel in m.get('files',{}):
     for p in prefixes:
         if rel==p.rstrip('/') or rel.startswith(p.rstrip('/')+'/') or rel==p:
-            to_remove.append(rel); break
+            to_remove.append(rel)
+            break
 print('\n'.join(to_remove))
-")"
+PY
+)"
 
         local del_ops='['
         local first=1
@@ -2218,18 +2227,31 @@ print('\n'.join(to_remove))
         write_info "Removed $scope_tool ($remove_count files)."
     else
         write_info "Removing all installed files."
-        printf '%s' "$manifest_json" | python3 -c "
+        printf '%s' "$manifest_json" | python3 - "$root" <<'PY'
 import json,sys,os
 m=json.load(sys.stdin)
-root='$root'
+root=sys.argv[1]
 for rel in m.get('files',{}):
-    abs=os.path.expanduser(rel) if rel.startswith('~') else os.path.join(root,rel)
-    if os.path.isfile(abs): os.remove(abs)
-"
+    abs_path=os.path.expanduser(rel) if rel.startswith('~') else os.path.join(root,rel)
+    if os.path.isfile(abs_path):
+        os.remove(abs_path)
+PY
         rm -f "$root/$MANIFEST_FILE_NAME"
 
         # Clean up empty dirs
-        for d in .ai-rules $(printf '%s' "$manifest_json" | python3 -c "import json,sys; m=json.load(sys.stdin); print(' '.join('.'+t for t in m.get('tools',[])))"); do
+        local cleanup_dirs=".ai-rules"
+        while IFS= read -r t; do
+            case "$t" in
+                claude-code) cleanup_dirs="$cleanup_dirs .claude" ;;
+                codex) cleanup_dirs="$cleanup_dirs .codex" ;;
+                opencode) cleanup_dirs="$cleanup_dirs .opencode" ;;
+                kilocode) cleanup_dirs="$cleanup_dirs .kilo" ;;
+                cursor) cleanup_dirs="$cleanup_dirs .cursor" ;;
+                *) cleanup_dirs="$cleanup_dirs .$t" ;;
+            esac
+        done < <(printf '%s' "$manifest_json" | python3 -c "import json,sys; [print(t) for t in json.load(sys.stdin).get('tools',[])]")
+
+        for d in $cleanup_dirs; do
             local dir_path="$root/$d"
             if [[ -d "$dir_path" ]]; then
                 local remaining_files
@@ -2255,27 +2277,29 @@ cmd_doctor() {
     manifest_json="$(manifest_read "$root")"
 
     write_section 'Installed'
-    python3 -c "
+    python3 - "$manifest_json" <<'PY'
 import json,sys
-m=json.loads(sys.stdin.read())
+m=json.loads(sys.argv[1])
 print('Protocol: '+str(m.get('protocol','')))
-print('Version: '+str(m.get('version',''))+' (installed '+str(m.get('installedAt',''))+', updated '+str(m.get('updatedAt','')))+')'
+print('Version: '+str(m.get('version',''))+' (installed '+str(m.get('installedAt',''))+', updated '+str(m.get('updatedAt',''))+')')
 print('Tools: '+', '.join(m.get('tools',[])))
 print('Files: '+str(len(m.get('files',{}))))
 print('MCP servers: '+', '.join(m.get('mcpServers',[])))
-" <<< "$manifest_json"
+PY
 
     write_section 'File integrity'
     local verify
     verify="$(invoke_verify "$root")"
-    python3 -c "
+    python3 - "$verify" <<'PY'
 import json,sys
-v=json.load(sys.stdin)
-if v['ok']: print(f'All {v[\"count\"]} files match manifest.')
+v=json.loads(sys.argv[1])
+if v['ok']:
+    print(f"All {v['count']} files match manifest.")
 else:
-    print(f'Mismatches: {len(v[\"mismatches\"])}')
-    for m in v['mismatches']: print(f'  {m}')
-" <<< "$verify"
+    print(f"Mismatches: {len(v['mismatches'])}")
+    for m in v['mismatches']:
+        print(f"  {m}")
+PY
 
     write_section 'User-modified files'
     local user_mod
@@ -2283,29 +2307,33 @@ else:
     echo "$user_mod"
 
     write_section 'Foreign files'
-    printf '%s' "$manifest_json" | python3 -c "
+    printf '%s' "$manifest_json" | python3 - <<'PY'
 import json,sys
 m=json.load(sys.stdin)
 ff=m.get('foreignFiles',{})
 for t,files in ff.items():
-    if files: print(f'  {t}: {len(files)} file(s)')
-"
+    if files:
+        print(f"  {t}: {len(files)} file(s)")
+PY
 
     write_section 'Integrations'
-    printf '%s' "$manifest_json" | python3 -c "
+    printf '%s' "$manifest_json" | python3 - <<'PY'
 import json,sys
 m=json.load(sys.stdin)
 integ=m.get('integrations',{})
-if not integ: print('  (none)'); sys.exit()
+if not integ:
+    print('  (none)')
+    sys.exit()
 found=False
 for k,i in integ.items():
     if i.get('detected'):
         tag=' [scaffolded]' if i.get('scaffolded') else ''
-        bundle=f' [artefacts v{i[\"artifactsBundleVersion\"]}]' if i.get('artifactsBundleVersion') else ''
-        print(f'  {k}: detected ({len(i.get(\"files\",[]))} files){tag}{bundle}')
+        bundle=f" [artefacts v{i['artifactsBundleVersion']}]" if i.get('artifactsBundleVersion') else ''
+        print(f"  {k}: detected ({len(i.get('files',[]))} files){tag}{bundle}")
         found=True
-if not found: print('  (none)')
-"
+if not found:
+    print('  (none)')
+PY
 }
 
 # ---- eject ------------------------------------------------------------------
