@@ -109,8 +109,8 @@ The script implements the protocol above. Notes:
 - Commands: `init` / `update` / `add <tool>` / `remove [<tool>]` / `doctor` (read-only diagnostic) / `eject` (delete the manifest, leave files in place).
 - Flags: `-Tools cursor,claude-code` (explicit list), `-NonInteractive` (auto-resolve prompts), `-AssumeYes` (answer yes to confirmations but still pause on destructive conflicts unless `-NonInteractive` is also set).
 
-### Bash (`install.sh`) — Unix / macOS / Linux
-
+### Bash (`install.sh`) — Unix  / macOS / Linux
+ 
 ```bash
 git clone https://github.com/johnsedaze/ai_rules_1c.git /tmp/1c-rules
 cd /tmp/1c-rules
