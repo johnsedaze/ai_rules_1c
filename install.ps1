@@ -4477,11 +4477,7 @@ function Invoke-Remove {
             'claude-code' { $toolPrefixes = @('.claude/', 'CLAUDE.md', '.mcp.json') }
             'codex'       { $toolPrefixes = @('.codex/') }
             'opencode'    { $toolPrefixes = @('.opencode/', 'opencode.json') }
-<<<<<<< HEAD
-            'kilocode'    { $toolPrefixes = @('.kilo/') }
-=======
             'kilocode'    { $toolPrefixes = @('.kilo/', '.kilocode/') }
->>>>>>> origin/original
             'cursor'      { $toolPrefixes = @('.cursor/') }
             'other'       { $toolPrefixes = @('.ai-agent/') }
         }

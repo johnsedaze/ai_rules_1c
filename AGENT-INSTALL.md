@@ -244,18 +244,14 @@ cd /tmp/1c-rules
 ./install.sh init --source /tmp/1c-rules
 ```
 
-<<<<<<< HEAD
 The Bash script has the same command set as PowerShell installer:
-=======
 Always run the script as a local file. If a no-`git` environment forces a one-liner, use a script block — it preserves `param(...)` semantics — but the script still needs a resolvable `-Source` value:
->>>>>>> origin/original
 
 - Commands: `init`, `update`, `add`, `remove`, `doctor`, `eject`.
 - Options: `--tool TOOL`, `--tools TOOL1,TOOL2`, `--source PATH|URL`, `--project-root PATH`, `--non-interactive`, `--assume-yes`.
 - `--source` accepts a local path or a URL; if a URL is supplied, the installer shallow‑clones it into a cache directory (`$TMPDIR/1c-rules-source-<hash>`) and re‑uses it on future runs. The URL mode requires `git` in `PATH`.
 - The installer is pure Bash with Python3 for YAML/JSON parsing; works on macOS (Homebrew/Xcode), most Linux distributions, and Windows WSL.
 
-<<<<<<< HEAD
 ### Security notes for CLI installers
 
 Both CLI installers (`install.ps1`, `install.sh`) must be cloned locally before execution, because they read `content/` and `adapters/` from the `-Source` path.
@@ -290,24 +286,17 @@ Both CLI installers (`install.ps1`, `install.sh`) must be cloned locally before 
   cd /tmp/1c-rules
   ./install.sh init --source /tmp/1c-rules
   ```
-=======
 Do not execute raw script text from GitHub with `Invoke-Expression`; download or clone the repository first so `install.ps1` can read `content/` and `adapters/`.
->>>>>>> origin/original
 
 ## File ownership
 
 - `AGENTS.md` — copied from the readable source `AGENTS.md` with per-section path rewriting (see *Always-on layer placement* above) and refreshed on every update when safe. The shipped file points at `content/<section>/...` paths in the source repo; the installed file in the project root points at the active tool's installed paths (e.g. `.cursor/rules/...mdc`, `.claude/skills/...`, `.kilo/agents/...`) so every link resolves to an existing project-local file. **Do not edit it directly** — your edits may be overwritten on the next update if the file is still installer-managed and unmodified.
 - `USER-RULES.md` — created empty by the installer on first install and **never** overwritten thereafter. Project- or team-specific conventions go here.
 - `memory.md` — project memory file at the project root. Created on first install and not overwritten by the installer.
-<<<<<<< HEAD
-- On-demand rule files — placed under each active tool's `rules.copyTo` directory (`.cursor/rules/*.mdc`, `.claude/rules/*.md`, `.kilo/rules/*.md`, `.codex/rules/*.md`, `.opencode/rules/*.md`). All copies contain the same authoritative text; per-tool frontmatter differs (e.g. Cursor keeps `globs`/`alwaysApply`). `AGENTS.md` references one canonical directory — the highest-priority active tool's. Other active tools' rules dirs are still populated so that tool-native auto-loading (Cursor's `.cursor/rules/*.mdc` indexing) keeps working.
-- `content/agents/<name>.md` — full role descriptions and prompts for the 12 specialized subagents. Each AI tool discovers them from its own agents directory after install.
-=======
 - `LLM-RULES.md` — agent-maintained self-improvement rule layer at the project root, written only by the `/evolve` command with per-entry user approval (precedence and capture discipline — `AGENTS.md → Rules self-improvement`). Created on first install (template) and **never** overwritten by the installer.
 - `.dev.env` — single source of truth for project parameters (code generation + infobase connection + web-publish URL for tests). Created on first install with auto-detected values where possible (PLATFORM_VERSION, PLATFORM_PATH, PREFIX) and prompts for the rest in interactive mode. **Never** overwritten by the installer; gitignored by default.
 - On-demand rule files — placed under each active tool's `rules.copyTo` directory (`.cursor/rules/*.mdc`, `.claude/rules/*.md`, `.kilo/rules-1c/*.md`, `.codex/rules/*.md`, `.opencode/rules/*.md`, `.ai-agent/rules/*.md` for `other`). Kilo intentionally uses `rules-1c` rather than the eagerly auto-loaded `.kilo/rules/`; its rules are loaded through the rewritten paths in `AGENTS.md`. All copies contain the same authoritative text; per-tool frontmatter differs (e.g. Cursor keeps `globs`/`alwaysApply`; `other` keeps only the minimum portable subset `description` + `alwaysApply`). `AGENTS.md` references one canonical directory — the highest-priority active tool's. Other active tools' rules dirs are still populated for their own discovery or explicit path loading.
 - `content/agents/*.md` — full role descriptions and prompts for the 13 specialized subagents. Source file names use short names such as `developer.md` / `explorer.md`; the installed agent id is defined by each file's frontmatter. Each AI tool discovers them from its own agents directory after install.
->>>>>>> origin/original
 
 ## USER-RULES.md
 

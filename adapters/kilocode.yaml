@@ -1,8 +1,6 @@
 # Adapter: Kilo Code (VSCode extension + CLI)
 #
-<<<<<<< HEAD
 # Read by both installation channels (AI-agent installer, install.ps1 and install.sh).
-=======
 # Describes how to copy and adapt files from content/ for Kilo Code.
 # Read by both installation channels (AI-agent installer and install.ps1).
 #
@@ -56,7 +54,6 @@
 #     vendor subfolder and pointing `kilo.jsonc` at it. The protocol places
 #     per-section files at the targets below; the source clone stays
 #     outside the project.
->>>>>>> origin/original
 
 tool: kilocode
 schemaVersion: 3
