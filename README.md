@@ -50,17 +50,14 @@
 .\install.ps1 init -Source https://github.com/johnsedaze/ai_rules_1c
 ```
 
-<<<<<<< HEAD
 ```bash
 ./install.sh init --source https://github.com/johnsedaze/ai_rules_1c
-=======
 Имя локальной папки произвольное: в примерах используется `1c-rules`, но установленный или рабочий каталог может называться иначе.
 
 Параметр `-Source` также принимает URL напрямую — в этом случае установщик сам делает shallow-clone в кэш под `$env:TEMP` (ключ кэша — хэш URL) и переиспользует его при повторных запусках; требует `git` в `PATH`:
 
 ```powershell
 .\install.ps1 init -Source https://github.com/comol/ai_rules_1c
->>>>>>> origin/original
 ```
 
 Команды: `init` / `update` / `add <tool>` / `remove [<tool>]` / `doctor` / `eject`.
