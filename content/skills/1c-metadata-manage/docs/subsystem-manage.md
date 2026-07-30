@@ -126,6 +126,15 @@ Exit code: 0 = OK, 1 = errors.
 1c-subsystem-manage info      — view structure
 ```
 
+## Recent Additions (upstream `w-2026-05-17`)
+
+The PowerShell scripts under `tools/1c-subsystem-manage/scripts/` were refreshed from [Nikolay-Shirokov/cc-1c-skills](https://github.com/Nikolay-Shirokov/cc-1c-skills). Highlights:
+
+- **`subsystem-compile` / `subsystem-edit`** — content of a subsystem accepts Russian and plural prefixes (`Справочник`, `Справочники`, `Catalogs`) and normalises them to the canonical `Catalog`. `subsystem-validate` flags surviving plural forms as an error.
+- **Stub-files for child subsystems** are created automatically when the parent declares a child. Previously the `<Subsystems>` reference existed but the file did not — the platform silently ignored it, and stricter loaders started failing.
+- Subsystem `objects` accepts `content` as a synonym (and vice versa).
+- Validators got the universal improvements described in `role-manage.md` → "Recent Additions" (one-liner output by default, `-Detailed`, folder path auto-resolution).
+
 ## MCP Integration
 
 - **get_object_dossier** — Comprehensive structural passport of objects before inclusion (structure, forms, dependencies, subscriptions, roles).
@@ -137,6 +146,6 @@ Exit code: 0 = OK, 1 = errors.
 
 ## SDD Integration
 
-When creating or modifying subsystems as part of a feature, update SDD artifacts if present (see `.ai-rules/rules/sdd-integrations.md` for detection):
+When creating or modifying subsystems as part of a feature, update SDD artifacts if present (see `content/rules/sdd-integrations.md` for detection):
 
 - **OpenSpec**: Add spec deltas describing subsystem purpose and included objects in `openspec/changes/`.

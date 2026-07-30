@@ -3,7 +3,8 @@
 # Describes how to copy and adapt files from content/ for Claude Code.
 # Read by both installation channels (AI-agent installer, install.ps1 and install.sh).
 #
-# Schema: see ARCHITECTURE.md §7 and §7.1 (closed operation set).
+# Schema: closed adapter schema described in AGENT-INSTALL.md (Lean placement)
+# and implemented by install.ps1.
 # Notes:
 #   - Rules are placed under .claude/rules/ (supported via automatic discovery).
 #   - Slash-command frontmatter fields use hyphen-separated names natively.

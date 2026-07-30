@@ -1,21 +1,85 @@
-# Adapter: Kilo Code (VSCode extension)
+# Adapter: Kilo Code (VSCode extension + CLI)
 #
+<<<<<<< HEAD
 # Read by both installation channels (AI-agent installer, install.ps1 and install.sh).
+=======
+# Describes how to copy and adapt files from content/ for Kilo Code.
+# Read by both installation channels (AI-agent installer and install.ps1).
+#
+# Schema: closed adapter schema described in AGENT-INSTALL.md (Lean placement)
+# and implemented by install.ps1.
+# Notes:
+#   - Current Kilo Code (VSCode extension and CLI, built on the Kilo CLI core)
+#     loads project content from the `.kilo/` directory:
+#       rules    -> .kilo/rules-1c/      (an explicit on-demand directory read
+#                                         through AGENTS.md; `.kilo/rules/`
+#                                         would be auto-loaded eagerly)
+#       agents   -> .kilo/agents/        (markdown subagent files; the legacy
+#                                         extension did not expose a folder for
+#                                         these — `.kilocode/subagents/` was
+#                                         never an official location)
+#       commands -> .kilo/commands/      (formerly "workflows"; the new extension
+#                                         auto-migrates `.kilocode/workflows/`
+#                                         to `.kilo/commands/` on startup)
+#       skills   -> .kilo/skills/        (per the Agent Skills specification;
+#                                         `.kilocode/skills/` is not a recognised
+#                                         skill directory)
+#   - MCP project-level config lives in `.kilo/kilo.json` (or any of the
+#     equivalents `kilo.json` / `kilo.jsonc` / `.kilo/kilo.jsonc`) and is
+#     written under the top-level `mcp` key, with per-server entries of
+#     shape `{ "type": "remote"|"local", "url"|"command": ..., "enabled":
+#     true }`. The legacy `.kilocode/mcp.json` with `mcpServers` is no
+#     longer read by current Kilo CLI / Kilo Code (v7.x+) — see
+#     https://kilo.ai/docs/automate/mcp/using-in-cli. Past installs that
+#     placed MCP into `.kilocode/mcp.json` produced silently empty MCP
+#     listings; on `update` the installer rewrites to the modern path.
+#   - Kilo Code distinguishes primary agents from subagents via a `mode` field:
+#     `subagent` (only invoked via delegation) or `all` (both primary and
+#     subagent). Source flag `isSubagent: true` maps to `mode: subagent`;
+#     otherwise `mode: all`.
+#   - Detection accepts both `.kilo/` (new) and `.kilocode/` (legacy) so
+#     existing projects keep working without re-installing.
+#
+# Anti-patterns observed in past agent installs (do NOT repeat):
+#   - Installing into `~/.config/kilo/` (or `%APPDATA%\kilo\`) — that path is
+#     the Kilo CLI's OWN global configuration directory, not a project root.
+#     Installing there leaves AGENTS.md with unrewritten `content/...` paths,
+#     `.dev.env` / OpenSpec / `.ai-rules.json` with nothing to bind to, and
+#     the CLI does not look up rules / agents / commands / skills from its
+#     own config dir. The protocol is project-scoped — see AGENT-INSTALL.md
+#     `## Agent protocol > Project root is mandatory — no global installs`.
+#   - Using singular directory names `.kilo/command/` / `.kilo/agent/`.
+#     The CLI's lookup contract is plural — `.kilo/commands/` and
+#     `.kilo/agents/`. The `copyTo` strings below are the ground truth; do
+#     not paraphrase them.
+#   - Dumping the whole `1c-rules` repo into the project as a `1c-rules/`
+#     vendor subfolder and pointing `kilo.jsonc` at it. The protocol places
+#     per-section files at the targets below; the source clone stays
+#     outside the project.
+>>>>>>> origin/original
 
 tool: kilocode
 schemaVersion: 3
 
 detection:
   - exists: ".kilo/"
+<<<<<<< HEAD
 
 rules:
   copyTo: ".kilo/rules/{name}.md"
+=======
+  - exists: ".kilocode/"
+
+rules:
+  copyTo: ".kilo/rules-1c/{name}.md"
+>>>>>>> origin/original
   frontmatter:
     keep: [description, alwaysApply]
     drop: [globs, category]
 
 agents:
   copyTo: ".kilo/agents/{name}.md"
+<<<<<<< HEAD
   
   frontmatter:
     keep: [description]
@@ -37,6 +101,21 @@ agents:
 
 commands:
   copyTo: ".kilo/workflows/{name}.md"
+=======
+  frontmatter:
+    # Kilo custom-agent frontmatter supports `model`; preserve the
+    # installer-resolved model tier instead of silently dropping it.
+    keep: [name, description, modelHint]
+    rename:
+      modelHint: model
+    drop: [tools, allowParallel, reasoningEffort]
+    addIf:
+      isSubagent: { mode: subagent }
+      "!isSubagent": { mode: all }
+
+commands:
+  copyTo: ".kilo/commands/{name}.md"
+>>>>>>> origin/original
   frontmatter:
     keep: [description]
     drop: [argumentHint, allowedTools]
@@ -47,6 +126,24 @@ skills:
 
 mcp:
   source: "content/mcp-servers.json"
+<<<<<<< HEAD
   target: "kilo.jsonc"
   schema: mcp
   format: jsonc
+=======
+  target: ".kilo/kilo.json"
+  schema: kilo-mcp
+  format: json
+  # `.kilo/kilo.json` is the SHARED Kilo config (instructions, skills.paths,
+  # custom permissions, agent overrides…), not an MCP-only file. The
+  # installer therefore deep-merges only the top-level `mcp` key into the
+  # existing file when present, preserving every other key the user added.
+  # If `.kilo/kilo.json` does not yet exist, the installer writes a fresh
+  # file containing just `{ "mcp": { … } }`.
+  merge: true
+  # On `update`, remove any leftover `.kilocode/mcp.json` from older
+  # installs (Kilo CLI / Kilo Code v7.x+ no longer reads it; an extra copy
+  # there only adds confusion in `/checkmcp` diagnostics).
+  legacyTargets:
+    - ".kilocode/mcp.json"
+>>>>>>> origin/original

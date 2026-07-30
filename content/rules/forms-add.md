@@ -1,25 +1,64 @@
 ---
-description: only when you need to generate or modify form
+description: Generating or significantly altering a managed 1C form (`Form.xml` + `Form.Module.bsl`), including form-presentation rules — programmatic modification of typical forms, element placement, fill checking, form commands. Load from `forms.md` for any form-creation or form-presentation task.
 alwaysApply: false
 category: forms
 ---
 
-# Use following instructions only if you need to generate or modify 1C form
+# Adding or Modifying a Managed Form
 
-> **Note**: MCP tools from `1c-code-metadata-mcp` provide search, analysis, schema, and validation. For actual form compilation, editing, and validation — use the **1c-metadata-manage** skill (form-manage section).
+This file owns the **rules**, not the MCP sequence. The pre-edit and post-edit MCP playbooks live in:
 
-## To generate new form:
-   Step 1: use **'search_forms'** to find similar existing forms in the configuration. Provide the metadata object name or form purpose as query
-   Step 2: use **'inspect_form_layout'** to study the structure of a found similar form — element hierarchy, data bindings, attributes, commands, event handlers
-   Step 3: use **'metadatasearch'** (`names_only=true`) to find similar metadata objects for XML reference
-   Step 4: use **'get_xsd_schema'** with `object_type="Форма"` to get the XSD schema and understand valid Form.xml structure
-   Step 5: generate Form.xml based on examples and schema
-   Step 6: use **'verify_xml'** with `object_type="Форма"` to validate generated XML against XSD. Fix errors if any
-   Step 7: use **1c-metadata-manage** skill (form-manage section) to compile and deploy the form
+- `tooling-playbooks.md → Form Analysis and Generation` — full ordered list of MCP calls (`search_forms` → `inspect_form_layout` → `metadatasearch` → `get_xsd_schema` → write/modify XML → `verify_xml` → compile via the `1c-metadata-manage` skill).
 
-## To modify existing form:
-   Step 1: use **'inspect_form_layout'** to get current form structure (elements, bindings, commands, events)
-   Step 2: use **'get_xsd_schema'** with `object_type="Форма"` to get schema for valid modifications
-   Step 3: modify Form.xml according to schema constraints
-   Step 4: use **'verify_xml'** with `object_type="Форма"` to validate changes
-   Step 5: use **1c-metadata-manage** skill (form-edit, form-validate) for actual modifications
+Do not duplicate that sequence here.
+
+## Rules specific to creating / modifying a form
+
+- **Prefer the `1c-metadata-manage` skill** (form-manage section) over hand-edited XML for non-trivial form changes. Hand-editing is acceptable only for small tweaks fully covered by the XSD; for anything else, the skill drives the toolchain (BOM, encoding, UID generation, ordering of `ChildObjects`).
+- **XSD validation is mandatory** after any XML edit — `verify_xml` against the schema returned by `get_xsd_schema(object_type="Форма")`. A form that parses in your editor is not a form that loads in Designer.
+- **Form-element naming.** Elements added to a typical form must carry the `{PREFIX}` prefix from `.dev.env`. Elements inside a newly created form (object already prefixed) do **not** repeat the prefix on every element — see `dev-standards-change-markers.md → "Metadata Naming"`.
+- **Common pitfalls** are catalogued in `metadata-xml-workarounds.md` — read it before hand-editing the XML.
+- **Region structure of the form module** — `module-structure.md → Form Module` (5 mandatory regions).
+
+## Form-Presentation Rules
+
+### Programmatic Modification of Typical Forms
+
+All typical form modifications are performed **programmatically**, not visually. Elements are created in the `OnCreateAtServer` handler (or via subscription / extension).
+
+### Placement of Added Elements
+
+- If the form has tabs — add elements to a separate tab (e.g. "Additional" or with `{PREFIX}`).
+- If no tabs — create a group without title for added elements.
+- Typical form element names — with `{PREFIX}` prefix.
+
+### New Forms (Non-Typical Objects)
+
+- Separate header attributes and tabular sections into distinct tabs: "Main" (header), then one tab per tabular section.
+- Fill "Header Data Path" property for pages with tabular sections.
+- Reference fields — maximum width 27 characters.
+- Multiline comment fields — width 79, height 3.
+
+### Fill Checking
+
+- Use "Fill check" property on form attributes.
+- Before writing / posting, call `ПроверитьЗаполнение()`:
+
+```bsl
+Если Не ПроверитьЗаполнение() Тогда
+	Возврат;
+КонецЕсли;
+```
+
+### Form Commands
+
+- When creating commands that modify data — enable "Modifies stored data" flag.
+
+## Companion rules
+
+| If the change also includes… | Also load |
+|---|---|
+| Event handlers (`ПриОткрытии`, `ПередЗаписью`, …), form-module logic, reserved names | `form-module.md` |
+| Client-side async code (`Асинх` / `Ждать`) | `async-methods.md` |
+
+This list is curated by the router file `forms.md`; load only the items you actually touch.

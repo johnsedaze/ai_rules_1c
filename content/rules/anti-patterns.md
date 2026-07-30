@@ -5,6 +5,8 @@ category: quality
 ---
 # 1C Anti-Patterns and Performance Guidelines
 
+> **Ownership.** This file owns the anti-pattern **catalog**: severity, detection hints, before/after fix templates. The normative query rules themselves (no queries in loops, parameterization, `КАК` aliases, virtual-table filters via parameters, intermediate result variable, `ВТ_*` naming, `ПЕРВЫЕ N`) are owned by `dev-standards-architecture.md §3 → "Queries"`; the dot-notation ban — by `dev-standards-architecture.md §4`. On conflict, the owner file wins — update rules there, update examples here.
+
 ## Critical Anti-Patterns (Must Fix)
 
 ### 1. Query in Loop
@@ -35,7 +37,7 @@ category: quality
 
 **Impact:** Loads entire object from database
 **Severity:** CRITICAL
-**Note:** Project default is a hard ban outside trivial single-call handlers. **[Project rule — stricter than ITS standard]** — ITS allows occasional dot-notation in non-hot code; the project default is to use dedicated БСП methods regardless. See `dev-standards-architecture.md §4`.
+**Note:** Project default is a hard ban outside trivial single-call handlers. **[Project rule — stricter than ITS standard]** — ITS allows occasional dot-notation in non-hot code; the project default is to use dedicated БСП methods regardless. See `dev-standards-architecture.md §4 → "Data Access — Reference Attribute Access"`.
 
 ```bsl
 // ❌ CRITICAL: Full object load for each attribute
@@ -51,7 +53,7 @@ category: quality
 Наименование = Реквизиты.Наименование;
 ```
 
-**SSL Methods Reference:** See `dev-standards-architecture.md §4 "Data Access — Reference Attribute Access"`.
+**SSL Methods Reference:** See `dev-standards-architecture.md §4 → "Data Access — Reference Attribute Access"`.
 
 ### 3. Subquery in SELECT
 
@@ -126,8 +128,13 @@ category: quality
 "ВЫБРАТЬ ПЕРВЫЕ 10
 |   Контрагенты.Ссылка КАК Ссылка
 |ИЗ
-|   Справочник.Контрагенты КАК Контрагенты"
+|   Справочник.Контрагенты КАК Контрагенты
+|
+|УПОРЯДОЧИТЬ ПО
+|   Контрагенты.Наименование"
 ```
+
+Always pair `ПЕРВЫЕ N` with `УПОРЯДОЧИТЬ ПО` — without an explicit ordering the returned subset is non-deterministic and may differ between runs and DBMS engines.
 
 ### 6. Excessive Client-Server Calls
 
@@ -178,6 +185,31 @@ category: quality
 КонецФункции
 ```
 
+### 7a. Using `Сообщить()` for User Notifications
+
+**Impact:** Bypasses the platform's user-message subsystem; messages are not bound to form fields, are not collected by long-running operations, and behave inconsistently between thin / web / mobile clients.
+**Severity:** HIGH
+**Source rule:** `dev-standards-code-style.md → "Forbidden Calls and Constructs"` ("`Сообщить()` for user notifications is **PROHIBITED**").
+
+```bsl
+// ❌ HIGH: legacy global call, not bound to form fields, lost in long-running ops
+Сообщить("Контрагент не указан");
+
+// ✅ OPTIMIZED (server): proper user-message subsystem, can target a form field
+Сообщение = Новый СообщениеПользователю;
+Сообщение.Текст = НСтр("ru = 'Контрагент не указан'");
+Сообщение.Поле = "Объект.Контрагент";
+Сообщение.УстановитьДанные(ОбъектДляФормы);
+Сообщение.Сообщить();
+
+// ✅ OPTIMIZED (БСП wrappers — preferred when БСП is available)
+ОбщегоНазначения.СообщитьПользователю(
+    НСтр("ru = 'Контрагент не указан'"), , "Объект.Контрагент");
+// On the client:
+ОбщегоНазначенияКлиент.СообщитьПользователю(
+    НСтр("ru = 'Контрагент не указан'"), , "Объект.Контрагент");
+```
+
 ## Medium Priority Anti-Patterns
 
 ### 8. Missing Caching
@@ -209,7 +241,7 @@ category: quality
 
 ### 9. O(n²) Algorithm
 
-**Impact:** Exponential performance degradation
+**Impact:** Quadratic growth in comparisons and execution time as both collections grow
 **Severity:** MEDIUM
 
 ```bsl
@@ -381,6 +413,7 @@ Rate findings on a scale from 0 to 100:
 | Missing TOP N | HIGH | Large queries without `ПЕРВЫЕ` |
 | Multiple server calls | HIGH | Sequential `НаСервере` calls from client |
 | &НаСервере misuse | HIGH | Server call not needing form context |
+| `Сообщить()` for notifications | HIGH | Direct `Сообщить("...")` instead of `СообщениеПользователю` / `ОбщегоНазначения.СообщитьПользователю` |
 | Missing cache | MEDIUM | Repeated expensive calls with same params |
 | O(n²) loops | MEDIUM | Nested loops searching for matches |
 | Deep nesting | MEDIUM | >4 levels of conditionals/loops |

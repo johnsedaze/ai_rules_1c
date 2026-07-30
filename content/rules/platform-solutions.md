@@ -205,7 +205,8 @@ For form attributes with reference or composite types — first copy the value t
 Процедура ПослеПодключенияСканера(Подключено, ДополнительныеПараметры) Экспорт
 
     Если Не Подключено Тогда
-        ОбщегоНазначенияКлиент.СообщитьПользователю("Не удалось подключить сканер.");
+        ОбщегоНазначенияКлиент.СообщитьПользователю(
+            НСтр("ru = 'Не удалось подключить сканер.'"));
         Возврат;
     КонецЕсли;
 
@@ -243,18 +244,101 @@ For form attributes with reference or composite types — first copy the value t
 КонецПроцедуры
 ```
 
-**Rules.**
+Headlines of the rules to follow: lock **before** reading; use `Исключительный` for writes and `Разделяемый` only for consistent reads; pass `ИсточникДанных` instead of iterating; lock the register, not the document; never call user dialogs / long-running operations under a transaction; set configuration lock mode to `Управляемый`.
 
-- Set the lock **before** reading the data you intend to modify; the lock lives until the end of the current transaction.
-- Use `РежимБлокировкиДанных.Исключительный` for write paths, `Разделяемый` only for reads that must stay consistent.
-- Always use `ИсточникДанных` (e.g. the document's tabular section) instead of iterating rows manually.
-- **Lock ordering.** Establish a **canonical order of locked tables** across all postings (e.g. always lock `ТоварыНаСкладах` before `ТоварыКПередаче`). Violating the order across two documents that touch the same registers causes deadlocks.
-- Lock the **register**, not the document — locking the document does not protect register reads.
-- Do not call user dialogs, long-running operations, or external services while holding a transaction.
-- Set the configuration property **«Режим управления блокировкой данных»** to `Управляемый` for the whole configuration; mixed mode hides bugs.
-- For diagnosing — `ТранзакцияАктивна()` and reading the technological log section `TLOCK` / `TDEADLOCK`.
+**Authoritative deep-dive — `locks-and-transactions.md`.** That file covers the full theory: transaction boundaries, implicit vs explicit transactions, lock-ordering contract for the whole project, mass-operation patterns, status-log pattern, and the technological-log diagnostics (`TLOCK` / `TDEADLOCK`). When designing a new posting path or debugging a deadlock — read it first.
 
 **Standard.** ITS: "Управление блокировкой данных в транзакции", "Особенности проведения документов".
+
+---
+
+## 10. Background jobs from an external data processor (БСП)
+
+**Problem.** `ДлительныеОперации` runs server-side. If a data processor is opened via "File → Open" (i.e. as an external `*.epf`, not from the `ДополнительныеОтчетыИОбработки` catalog), БСП cannot find the processor on the server and `ВыполнитьВФоне` fails.
+
+**Symptom.** "Метаданные не найдены" / "Не удалось получить обработку на сервере" when calling `ДлительныеОперации.ВыполнитьВФоне` from an external processor's form.
+
+**Template — copy the processor binary to the server via temporary storage:**
+
+```bsl
+&НаКлиенте
+Процедура ПриОткрытии(Отказ)
+    Если ЭтоВнешняяОбработка() Тогда
+        ОписаниеОповещения = Новый ОписаниеОповещения(
+            "ОбработатьРезультатПомещенияФайлаОбработки", ЭтотОбъект);
+        НачатьПомещениеФайлов(ОписаниеОповещения,
+            ИмяФайлаОбработки(), Ложь, УникальныйИдентификатор);
+    КонецЕсли;
+КонецПроцедуры
+
+&НаКлиенте
+Процедура ОбработатьРезультатПомещенияФайлаОбработки(ПомещенныеФайлы, ОбработчикЗавершения) Экспорт
+    Если ПомещенныеФайлы <> Неопределено Тогда
+        ХранениеФайлаОбработки = КопияОбработкиНаСервере(ПомещенныеФайлы[0].Хранение);
+    КонецЕсли;
+КонецПроцедуры
+
+&НаСервере
+Функция КопияОбработкиНаСервере(Хранение)
+    Результат = ПолучитьИмяВременногоФайла();
+    ДвоичныеДанные = ПолучитьИзВременногоХранилища(Хранение);
+    ДвоичныеДанные.Записать(Результат);
+    Возврат Результат;
+КонецФункции
+```
+
+**Template — start the background job:**
+
+```bsl
+&НаСервере
+Функция НачатьВыполнениеФоновогоЗаданияНаСервере()
+    ЭтоВнешняяОбработка = ЭтоВнешняяОбработка();
+    Если ЭтоВнешняяОбработка Тогда
+        ИмяОбработки = ХранениеФайлаОбработки;
+    Иначе
+        ИмяОбработки = РеквизитФормыВЗначение("Объект").Метаданные().ПолноеИмя();
+    КонецЕсли;
+
+    ПараметрыЗадания = Новый Структура;
+    ПараметрыЗадания.Вставить("ИмяОбработки", ИмяОбработки);
+    ПараметрыЗадания.Вставить("ИмяМетода", "<procedure name in the object module>");
+    ПараметрыЗадания.Вставить("ПараметрыВыполнения", ПараметрыВыполненияОбработки);
+    ПараметрыЗадания.Вставить("ЭтоВнешняяОбработка", ЭтоВнешняяОбработка);
+
+    ПараметрыВыполнения = ДлительныеОперации.ПараметрыВыполненияВФоне(УникальныйИдентификатор);
+    ПараметрыВыполнения.НаименованиеФоновогоЗадания = "<job description>";
+    ПараметрыВыполнения.ЗапуститьВФоне = Истина;
+
+    Возврат ДлительныеОперации.ВыполнитьВФоне(
+        "ДлительныеОперации.ВыполнитьПроцедуруМодуляОбъектаОбработки",
+        ПараметрыЗадания, ПараметрыВыполнения);
+КонецФункции
+```
+
+**Bypassing safe mode in the background.** To disable the safe-mode permission check inside the background job, create a fresh instance of the processor without safe mode:
+
+```bsl
+Процедура ОбработкаДанныхВФоне(Параметры, АдресРезультата) Экспорт
+    ЧастиИмени = СтрРазделить(ЭтотОбъект.Метаданные().ПолноеИмя(), ".");
+    ЭтоВнешняяОбработка = (ВРег(ЧастиИмени[0]) = "ВНЕШНЯЯОБРАБОТКА");
+    Если ЭтоВнешняяОбработка Тогда
+        ОбработкаОбъект = ВнешниеОбработки.Создать(
+            ЭтотОбъект.ИспользуемоеИмяФайла, Ложь,
+            ОбщегоНазначения.ОписаниеЗащитыБезПредупреждений());
+        Результат = ОбработкаОбъект.ОбработкаДанных(...);
+    Иначе
+        Результат = ОбработкаДанных(...);
+    КонецЕсли;
+    ПоместитьВоВременноеХранилище(Результат, АдресРезультата);
+КонецПроцедуры
+```
+
+**Constraints.**
+
+- The background procedure cannot use form attributes or processor tabular sections — pass everything via parameters.
+- The server-side copy lives in a temp file — keep its path in a form attribute (`ХранениеФайлаОбработки`) until the long-running operation completes.
+
+**Standard.** БСП "Длительные операции" subsystem; `ДлительныеОперации.ВыполнитьПроцедуруМодуляОбъектаОбработки` reference. Requires БСП 3.0+ and platform 8.3.13+.
 
 ---
 

@@ -8,6 +8,8 @@ Comprehensive database management: registry (.v8-project.json) and platform oper
 
 Manages the `.v8-project.json` file — the project's infobase registry. Stores connection parameters, aliases, Git branch bindings.
 
+> **Relationship with `.dev.env`.** Across the rest of the 1c-rules toolkit (slash commands `/loadfrom1cbase`, `/update1cbase`, `/getconfigfiles`, `/deploy-and-test`, the `1c-tester` subagent and all on-demand rules), the **single source of truth** for project parameters — including the current dev infobase — is `.dev.env` at the project root (created by the 1c-rules installer). `.v8-project.json` is an **optional advanced multi-base registry** for the `1c-metadata-manage` skill scripts when you need to juggle several infobases bound to Git branches/aliases. When both files are present, keep them in sync: the `default` entry in `.v8-project.json` should mirror `INFOBASE_PATH`, `IB_USER`, `IB_PASSWORD`, `EXTENSION_NAME`, `PLATFORM_PATH` (`v8path`) from `.dev.env`. For single-base projects `.v8-project.json` is not required at all — the skill scripts accept the same parameters via command-line flags driven by `.dev.env` values.
+
 ### Usage
 
 ```
@@ -369,6 +371,15 @@ After loading: offer to run `db-update`.
 
 ---
 
+## Recent Additions (upstream `w-2026-05-17`)
+
+The PowerShell scripts under `tools/1c-db-ops/scripts/` were refreshed from [Nikolay-Shirokov/cc-1c-skills](https://github.com/Nikolay-Shirokov/cc-1c-skills). Highlights:
+
+- **`db-load-xml`** — strict log parsing. Catches "Неверное свойство объекта метаданных", "Неизвестное имя типа" and similar messages that the platform writes to the log despite a formal "success" exit. Previously a partial silent metadata loss was reported as a green run.
+- **`db-load-xml` / `db-load-git`** — `-UpdateDB` flag combines load + database update in a single Configurator launch (was two separate calls).
+- **`db-load-git`** — picks up changes to HTML help (`ru.html` and similar) via partial load even without the accompanying `Help.xml` in the commit. Previously such edits were silently dropped and the help text in the base stayed stale. Fixed search for changed files when sources live in a nested folder of the repo (`src/cf` etc.); path normalisation for the configuration directory is corrected. Python port: Cyrillic paths in git output no longer break on Windows (explicit UTF-8 decoding).
+- **db-list** — already fully described in Part 1 of this doc (registry of `.v8-project.json`). It is a no-script skill in upstream — the agent reads / writes the JSON directly. No script files were added under `tools/`.
+
 ## MCP Integration
 
 - **metadatasearch** — Verify object names when doing partial loads.
@@ -377,6 +388,6 @@ After loading: offer to run `db-update`.
 
 ## SDD Integration
 
-When creating or modifying databases as part of a project, update SDD artifacts if present (see `.ai-rules/rules/sdd-integrations.md` for detection):
+When creating or modifying databases as part of a project, update SDD artifacts if present (see `content/rules/sdd-integrations.md` for detection):
 
 - **OpenSpec**: If the database setup is part of a tracked change, note the environment configuration in the active proposal under `openspec/changes/<change-id>/design.md`.

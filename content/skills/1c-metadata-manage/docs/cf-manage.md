@@ -39,7 +39,7 @@ powershell.exe -NoProfile -File skills/1c-metadata-manage/tools/1c-cf-manage/scr
 | `remove-defaultRole` | `Role.Name` or `Name` | Remove default role |
 | `set-defaultRoles` | Names via `;;` | Replace default roles list |
 
-Full property reference: [cf-edit-reference.md](skills/1c-metadata-manage/tools/1c-cf-manage/cf-edit-reference.md).
+Full property reference: [cf-edit-reference.md](../tools/1c-cf-manage/cf-edit-reference.md).
 
 ### Examples
 
@@ -104,6 +104,29 @@ Exit code: 0 = OK, 1 = errors.
 1c-cf-manage info        — view structure summary
 ```
 
+## Recent Additions (upstream `w-2026-05-17`)
+
+The PowerShell scripts under `tools/1c-cf-manage/scripts/` were refreshed from [Nikolay-Shirokov/cc-1c-skills](https://github.com/Nikolay-Shirokov/cc-1c-skills). Highlights:
+
+### `cf-init`
+
+- Generates a default panel layout aligned with stock ERP/БП ≥ 8.3.24: open windows on top, sections on the left. Without this layout the web client renders sections as icons only — `web-test` could not see them. Modern interface mode + 8.2-style backward compatibility is the default.
+
+### `cf-edit` — new operations
+
+- **`set-panels`** — configure the configuration panels via JSON. Aliases by name (`sections`, `open`, `favorites`, `history`, `functions`), panel stacking via `{group: [...]}`, multiple panels side-by-side. Russian aliases (`Открытых`, `Разделов`, `Избранного`, `История`, `Функций`) are accepted and silently mapped to canonical English aliases.
+- **`set-home-page`** — rewrite the home page: one or two columns, list of forms with height / visibility / role overrides.
+- **`add-childObject`** — now requires the object file to exist on disk; otherwise the script fails with a hint to call `/meta-compile`, `/role-compile`, `/subsystem-compile` first. Previously `Configuration.xml` could end up referencing a missing file and the platform would silently refuse to load. The legacy mode (root XML lost while files survive) is preserved for the rare rollback scenario.
+
+### `cf-info`
+
+- Configuration overview shows the panel layout (panel stacks within one side and side-by-side panels). With `-Section home-page` — full home page contents with layout and role overrides.
+
+### `cf-validate`
+
+- Cross-references `Form` references in the home page and in default-form properties of configuration objects — broken links are now caught at validation time, not at load time.
+- Platform 8.5 support — new compatibility-mode and interface-mode values plus the new XML header format. (Same upgrade in `cfe-validate`, `epf-validate`, `skd-validate`.)
+
 ## MCP Integration
 
 - **get_object_dossier** — Comprehensive structural passport of existing configuration objects (structure, forms, dependencies, code, roles) in one call.
@@ -117,6 +140,6 @@ Exit code: 0 = OK, 1 = errors.
 
 ## SDD Integration
 
-When creating a new configuration as part of a project, update SDD artifacts if present (see `.ai-rules/rules/sdd-integrations.md` for detection):
+When creating a new configuration as part of a project, update SDD artifacts if present (see `content/rules/sdd-integrations.md` for detection):
 
 - **OpenSpec**: Create initial specs in `openspec/specs/` describing configuration purpose, compatibility, and scope.

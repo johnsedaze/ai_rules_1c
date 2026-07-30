@@ -6,7 +6,7 @@ Edit and validate CommandInterface.xml files for 1C subsystems.
 
 ## 1. Edit — Modify CommandInterface.xml
 
-Operations: hide, show, place, order, subsystem-order, group-order. Full reference: [reference.md](skills/1c-metadata-manage/tools/1c-interface-manage/reference.md).
+Operations: hide, show, place, order, subsystem-order, group-order. Full reference: [reference.md](../tools/1c-interface-manage/reference.md).
 
 ```powershell
 powershell.exe -NoProfile -File skills/1c-metadata-manage/tools/1c-interface-manage/scripts/interface-edit.ps1 -CIPath '<path>' -Operation <op> -Value '<value>'
@@ -83,6 +83,13 @@ powershell.exe -NoProfile -File skills/1c-metadata-manage/tools/1c-interface-man
 | 13 | Command reference format | WARN |
 
 Exit code: 0 = all checks passed, 1 = errors found.
+
+## Recent Additions (upstream `w-2026-05-17`)
+
+The PowerShell scripts under `tools/1c-interface-manage/scripts/` were refreshed from [Nikolay-Shirokov/cc-1c-skills](https://github.com/Nikolay-Shirokov/cc-1c-skills). Highlights:
+
+- **`interface-edit`** — operations `place` / `order` accept the value as an object (not only as a string). Command names in `hide` / `show` / `place` / `order` are normalised: `Catalogs.X` and `Справочник.X` map to canonical `Catalog.X`.
+- **`interface-validate`** — universal validator improvements (one-liner output by default, `-Detailed`, folder path auto-resolution) — see `role-manage.md` → "Recent Additions".
 
 ## MCP Integration
 

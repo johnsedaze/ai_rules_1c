@@ -55,6 +55,14 @@
       "url": "http://localhost:8008/mcp",
       "connectionId": "1c_ssl_service_001",
       "required": false
+    },
+    {
+      "id": "1c-data-mcp",
+      "description": "1C data management and analysis (HTTP service published on the infobase; URL is derived from INFOBASE_PUBLISH_URL in .dev.env by the installer). The endpoint MUST be reachable without a password — configure anonymous access in default.vrd (technical user with empty password), otherwise the MCP client receives HTTP 401/403 and the tools do not appear.",
+      "transport": "http",
+      "url": "{INFOBASE_PUBLISH_URL}/hs/mcp",
+      "connectionId": "1c_data_mcp_001",
+      "required": false
     }
   ]
 }

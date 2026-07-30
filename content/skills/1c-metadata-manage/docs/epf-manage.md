@@ -23,7 +23,7 @@ Generates the minimal set of XML source files for a 1C external data processor: 
 ### Command
 
 ```powershell
-pwsh -NoProfile -File skills/1c-metadata-manage/tools/1c-epf-scaffold/scripts/init.ps1 -Name "<Name>" [-Synonym "<Synonym>"] [-SrcDir "<SrcDir>"]
+powershell.exe -NoProfile -File skills/1c-metadata-manage/tools/1c-epf-scaffold/scripts/init.ps1 -Name "<Name>" [-Synonym "<Synonym>"] [-SrcDir "<SrcDir>"]
 ```
 
 ### What Gets Created
@@ -46,7 +46,7 @@ After scaffolding, use these skills to build out the processor:
 
 - **Add a form**: `1c-form-scaffold` skill
 - **Add a template/layout**: `1c-template-manage` skill
-- **Register with SSL (BSP)**: `1c-bsp-registration` skill
+- **Register with SSL (BSP)**: `bsp-manage.md` section 1 «Registration»
 - **Build EPF**: `1c-epf-build` skill
 - **Validate**: `1c-epf-validate` skill
 
@@ -304,6 +304,15 @@ Exit code: 0 = all checks passed, 1 = errors found.
 
 ---
 
+## Recent Additions (upstream `w-2026-05-17`)
+
+The PowerShell script `tools/1c-epf-validate/scripts/epf-validate.ps1` was refreshed from [Nikolay-Shirokov/cc-1c-skills](https://github.com/Nikolay-Shirokov/cc-1c-skills). Highlights:
+
+- **Format version auto-detection** from the nearest `Configuration.xml` (8.3.27+, 8.5).
+- **Platform 8.5** support across `epf-validate` and `erf-validate` (new compatibility-mode and interface-mode values, new XML header format).
+- **Universal validator improvements** — one-liner output by default (`-Detailed` for the full per-check trace); accepts both an XML file and a folder path as the primary argument; universal `-Path` parameter alongside legacy `-ObjectPath`.
+- The same script handles `erf-validate` — upstream `erf-validate` is a thin pass-through to `epf-validate.ps1`, the script auto-detects `ExternalReport` vs `ExternalDataProcessor` from the root XML element. No separate `erf-validate.ps1` is shipped.
+
 ## MCP Integration
 
 - **metadatasearch** — Verify metadata object names and types when setting up the processor/report for integration with existing configuration objects.
@@ -315,6 +324,6 @@ Exit code: 0 = all checks passed, 1 = errors found.
 
 ## SDD Integration
 
-When creating external processors or reports as part of a feature, update SDD artifacts if present (see `.ai-rules/rules/sdd-integrations.md` for detection):
+When creating external processors or reports as part of a feature, update SDD artifacts if present (see `content/rules/sdd-integrations.md` for detection):
 
 - **OpenSpec**: Add spec deltas describing the processor/report purpose, parameters, and target objects in `openspec/changes/`.

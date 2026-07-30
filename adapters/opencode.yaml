@@ -3,15 +3,56 @@
 # Describes how to copy and adapt files from content/ for OpenCode CLI.
 # Read by both installation channels (AI-agent installer, install.ps1 and install.sh).
 #
-# Schema: see ARCHITECTURE.md §7 and §7.1 (closed operation set).
+# Schema: closed adapter schema described in AGENT-INSTALL.md (Lean placement)
+# and implemented by install.ps1.
 # Notes:
 #   - OpenCode distinguishes primary agents from subagents via a `mode` field.
 #     We set `mode: subagent` when source has `isSubagent: true`,
 #     and `mode: primary` otherwise, via `frontmatter.addIf`.
+#   - OpenCode does NOT accept a `tools` ARRAY (e.g. ["Read", "Write", ...]).
+#     Its `tools` field must be an OBJECT ({write: true, ...}) and is itself
+#     deprecated in favour of `permission` (OpenCode v1.1.1+). content/ stores
+#     tools as a YAML list (right for Cursor / Claude Code), so for OpenCode we
+#     TRANSFORM that list into a `permission` object via `frontmatter.toolsToPermission`:
+#     each source tool maps to a permission key and is set to `allow`; permission
+#     keys not granted by the source list are set to `deny` so read-only agents
+#     (explorer, code-reviewer, arch-reviewer) cannot edit or run shell commands.
+#     `tools` is then dropped (not in `keep`). Leaving the raw array fails
+#     OpenCode config validation and blocks the whole config — which prevents
+#     OpenCode from (re)starting.
+#     Mapping: Read->read, Write/Edit->edit, Grep->grep, Glob->glob, Shell->bash.
+#     MCP has no single permission key (MCP tools are gated by their own names),
+#     so it is intentionally not mapped — MCP tools stay enabled by default.
 #   - OpenCode natively reads skills from `.claude/skills/` (besides its own
 #     `.opencode/skills/`). To avoid duplicate skill folders, we write skills
 #     to `.claude/skills/` — shared with Claude Code when both are installed.
-#   - MCP config follows OpenCode's own schema: `mcp[id] = { type: "local", ... }`.
+#   - MCP config goes into `opencode.json` at the PROJECT ROOT (NOT
+#     `.opencode/opencode.json` — `.opencode/` only holds agents / commands /
+#     modes / plugins / skills / tools / themes, never the main config file).
+#     OpenCode reads project MCP only from the root `opencode.json` `mcp` key;
+#     a file under `.opencode/` is silently ignored and the servers never
+#     connect (this was the bug behind "MCP not picked up"). Per-server schema:
+#     remote -> { type: "remote", url, enabled }, local -> { type: "local",
+#     command: [...], enabled }. OpenCode validates each entry with a STRICT
+#     schema (Zod `.strict()`) — any extra key (e.g. `description`,
+#     `connection_id`) makes it reject the WHOLE config, so the renderer emits
+#     only the documented keys. `opencode.json` is the user's shared config, so
+#     the installer deep-merges only the top-level `mcp` key (see `mcp.merge`).
+#   - MCP server KEYS are normalized to start with a letter. OpenCode exposes
+#     MCP tools to the model as `<server-key>_<tool>` (the key is taken verbatim
+#     from the `mcp` object — OpenCode only swaps characters outside
+#     [a-zA-Z0-9_-] for `_`, it does NOT prepend a letter). Some providers
+#     (Moonshot/Kimi) reject any function name that does not start with a letter
+#     (`^[a-zA-Z_][a-zA-Z0-9-_]{2,63}$`), so a key like `1c-syntax-checker-mcp`
+#     yields `1c-syntax-checker-mcp_syntaxcheck` and the whole request fails with
+#     "function name is invalid, must start with a letter". Rendering rule:
+#     a leading `1c`/`1C` becomes `onec` (`1c-syntax-checker-mcp` ->
+#     `onec-syntax-checker-mcp`, `1C-docs-mcp` -> `onec-docs-mcp`); any other
+#     non-letter-leading id gets an `mcp-` prefix. Canonical ids in
+#     content/mcp-servers.json and in the docs stay `1c-...`; only the rendered
+#     OpenCode key changes. /checkmcp + /doctor detect tools by their bare names
+#     (syntaxcheck, docinfo, ...), not by the server prefix, so the rename is
+#     transparent to them.
 #   - On-demand rules are placed under `.opencode/rules/` and referenced from
 #     AGENTS.md by file path. OpenCode itself does not auto-discover them — the
 #     directory is just a stable, predictable location that the agent reads
@@ -33,21 +74,32 @@ rules:
 agents:
   copyTo: ".opencode/agent/{name}.md"
   frontmatter:
-    keep: [name, description, tools, modelHint]
+    # Build the OpenCode `permission` object from the source `tools` array
+    # (runs before keep/drop so it can still read `tools`). Granted tools get
+    # `allow`; the remaining mapped keys get `deny`.
+    toolsToPermission:
+      source: tools
+      grant: allow
+      deny: deny
+      map:
+        Read: read
+        Write: edit
+        Edit: edit
+        Grep: grep
+        Glob: glob
+        Shell: bash
+    keep: [name, description, modelHint, permission]
     rename:
       modelHint: model
     addIf:
       isSubagent: { mode: subagent }
       "!isSubagent": { mode: primary }
-    drop: [isSubagent, allowParallel, reasoningEffort]
 
 commands:
   copyTo: ".opencode/command/{name}.md"
   frontmatter:
-    keep: [description, allowedTools]
-    rename:
-      allowedTools: tools
-    drop: [argumentHint]
+    keep: [description]
+    drop: [argumentHint, allowedTools]
 
 skills:
   copyTo: ".claude/skills/{name}/"
@@ -55,6 +107,22 @@ skills:
 
 mcp:
   source: "content/mcp-servers.json"
-  target: ".opencode/opencode.json"
-  schema: "mcp[id]={ type: 'local', command: [...] }"
+  # OpenCode reads its project config from `opencode.json` at the PROJECT ROOT.
+  # `.opencode/` holds agents/commands/modes/plugins/skills/tools/themes — never
+  # the main config file. Writing MCP to `.opencode/opencode.json` produces a
+  # file OpenCode never reads, so the servers silently never connect.
+  target: "opencode.json"
+  schema: "mcp[id]={ type: 'remote', url, enabled: true } | { type: 'local', command: [...], enabled: true }"
   format: json
+  # `opencode.json` is the user's SHARED project config (model, theme, agent
+  # overrides, permissions, …), not an MCP-only file. Deep-merge ONLY the
+  # top-level `mcp` key so every other user key is preserved.
+  merge: true
+  # Older 1c-rules installs wrote MCP to `.opencode/opencode.json` (a path
+  # OpenCode does not read). Remove it on update so it does not linger as a
+  # dead duplicate that confuses MCP diagnostics.
+  legacyTargets:
+    - ".opencode/opencode.json"
+  # Server keys must start with a letter (see Notes above): leading `1c`/`1C`
+  # -> `onec`, any other non-letter-leading id gets an `mcp-` prefix.
+  keyNormalization: "leading-1c-to-onec"

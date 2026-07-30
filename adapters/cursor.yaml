@@ -3,7 +3,8 @@
 # Describes how to copy and adapt files from content/ for Cursor IDE.
 # Read by both installation channels (AI-agent installer, install.ps1 and install.sh).
 #
-# Schema: see ARCHITECTURE.md §7 and §7.1 (closed operation set).
+# Schema: closed adapter schema described in AGENT-INSTALL.md (Lean placement)
+# and implemented by install.ps1.
 # Note: Cursor is the only tool that supports glob-based rule activation,
 # so "globs" and "alwaysApply" are kept verbatim in the rules frontmatter.
 

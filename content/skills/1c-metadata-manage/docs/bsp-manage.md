@@ -197,7 +197,7 @@ Result in `ObjectModule.bsl`:
 
 ### Next Steps
 
-- Add more commands: `1c-bsp-command` skill
+- Add more commands: section 2 «Command» of this doc (`1c-bsp-command` procedure)
 - Add a form: `1c-form-scaffold` skill
 - Add a template: `1c-template-manage` skill
 - Build EPF: `1c-epf-build` skill
@@ -208,7 +208,7 @@ Result in `ObjectModule.bsl`:
 
 Adds a command to an existing `СведенияОВнешнейОбработке()` function and generates the corresponding handler.
 
-The data processor must be initialized with BSP registration first (see `1c-bsp-registration` skill).
+The data processor must be initialized with BSP registration first (see section 1 «Registration» of this doc).
 
 ### Usage
 
@@ -365,7 +365,7 @@ If procedure already exists — add `ИначеЕсли` branch.
 ### Instructions
 
 1. Find and read `ObjectModule.bsl` via Glob: `src/{{ProcessorName}}/Ext/ObjectModule.bsl`
-2. Ensure `СведенияОВнешнейОбработке()` exists. If not — suggest using `1c-bsp-registration` skill first
+2. Ensure `СведенияОВнешнейОбработке()` exists. If not — run section 1 «Registration» of this doc first
 3. Determine processor kind from existing code (find the line with `ВидОбработки...()`)
 4. Insert command block **before** `Возврат ПараметрыРегистрации`
 5. Add handler:
@@ -386,6 +386,18 @@ If procedure already exists — add `ИначеЕсли` branch.
 
 ---
 
+## Recent Additions (upstream `w-2026-05-17`)
+
+The upstream `cc-1c-skills` skills `epf-bsp-init` and `epf-bsp-add-command` are no-script (the agent does the work directly via Read / Edit / Glob / Grep). Their content is already covered by Sections 1–2 of this document, in English. Cross-checked against upstream `w-2026-05-17`:
+
+- Kind mapping (six kinds: `ДополнительнаяОбработка`, `ДополнительныйОтчет`, `ЗаполнениеОбъекта`, `Отчет`, `ПечатнаяФорма`, `СозданиеСвязанныхОбъектов`) — aligned.
+- Default command type per kind — aligned.
+- Free-form command types (open form, client method, server method, form filling, safe-mode script) — aligned.
+- `СведенияОВнешнейОбработке` skeleton, `Назначение` section for assignable kinds, `Модификатор` for `ПечатнаяФорма` — aligned.
+- Server handlers (`ВыполнитьКоманду` for `ЗаполнениеОбъекта` / `СозданиеСвязанныхОбъектов` / global processors, `Печать` for `ПечатнаяФорма`) — aligned.
+
+No script files were brought into `tools/` — the operations are pure module-text edits performed by the agent, which is how upstream ships them as well.
+
 ## MCP Integration
 
 - **ssl_search** — Find SSL module methods for BSP registration and verify correct API method names.
@@ -395,6 +407,6 @@ If procedure already exists — add `ИначеЕсли` branch.
 
 ## SDD Integration
 
-When registering processors with BSP as part of a feature, update SDD artifacts if present (see `.ai-rules/rules/sdd-integrations.md` for detection):
+When registering processors with BSP as part of a feature, update SDD artifacts if present (see `content/rules/sdd-integrations.md` for detection):
 
 - **OpenSpec**: Document BSP registration details and command placement in spec deltas under `openspec/changes/<change-id>/specs/`.

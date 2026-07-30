@@ -94,9 +94,10 @@ if (-not (Test-Path $V8Path)) {
     exit 1
 }
 
-# --- Validate connection ---
+# --- Validate database connection ---
 if (-not $InfoBasePath -and (-not $InfoBaseServer -or -not $InfoBaseRef)) {
-    Write-Host "Error: specify -InfoBasePath or -InfoBaseServer + -InfoBaseRef" -ForegroundColor Red
+    Write-Host "Error: database connection required. Specify -InfoBasePath or -InfoBaseServer/-InfoBaseRef" -ForegroundColor Red
+    Write-Host "Dump in an empty database loses reference types (CatalogRef, DocumentRef, etc.) irreversibly." -ForegroundColor Yellow
     exit 1
 }
 

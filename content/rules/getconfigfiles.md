@@ -1,5 +1,5 @@
 ---
-description: use when you need to get some objects from infobase to repository
+description: Exporting configuration objects (metadata) from an infobase to the repository — `ibcmd infobase config export` (preferred) or Designer `/DumpConfigToFiles` fallback. Load when extracting source from a live infobase.
 alwaysApply: false
 category: workflow
 ---
@@ -10,21 +10,42 @@ category: workflow
 
 | Placeholder | Purpose |
 |---|---|
-| `{PLATFORM_PATH}` | Path to the 1C platform installation directory (containing `bin\1cv8.exe`). Example: `C:\Program Files\1cv8\8.3.23.1997` |
-| `{INFOBASE_PATH}` | Path to a file infobase or the connection string of a server infobase |
-| `{IB_USER}` | Infobase user name |
-| `{IB_PASSWORD}` | Password (when required) |
-| `{EXPORT_PATH}` | Directory where object sources are exported |
+| `{PLATFORM_PATH}` | 1C platform installation directory containing `bin\1cv8.exe` (example: `C:\Program Files\1cv8\8.3.23.1997`) — **blocking** |
+| `{INFOBASE_PATH}` | File infobase path or server connection string — **blocking** |
+| `{IB_USER}` / `{IB_PASSWORD}` | Credentials (empty = no authentication / no password; `/N` / `/P` / `--user` / `--password` are omitted) |
+| `{EXPORT_PATH}` | Directory where object sources are exported (empty = repository root) |
 | `{EXTENSION_NAME}` | Extension name when exporting from an extension; otherwise omit the `-Extension` argument |
-| `{LOG_PATH}` | Designer log file |
+| `{LOG_PATH}` | Designer log file (empty = `$env:TEMP\1cv8.log` on Windows / `$TMPDIR/1cv8.log` on POSIX) |
+| `{IBCMD_CONFIG}` | Standalone server `config.yml` for `ibcmd` (empty = Designer fallback) |
 
-If a value is unknown — **ask the user**, do not guess. Project-stable values go into `.dev.env`.
+Ask-policy (canon — `dev-standards-env.md`): only `INFOBASE_PATH` and `PLATFORM_PATH` are blocking — if either is empty, **ask the user** (do not guess) and write the value to `.dev.env`. **Never ask up front** about the defaulted keys — apply the defaults from the table silently; re-ask `IB_USER` / `IB_PASSWORD` only if the platform itself returns an authentication error, `LOG_PATH` only if the resolved path turns out to be non-writable. An empty password is a fully valid configuration for dev / test infobases. When substituting templates: if `LOG_PATH` is empty, replace `{LOG_PATH}` with `"$env:TEMP\1cv8.log"`.
 
 ## Steps
 
-**Step 1.** Compose the list of objects to export in `repoobjects.txt` (one full metadata-object name per line, e.g. `Справочник.Контрагенты`). Build the list via `metadatasearch` or `search_metadata` (see `AGENTS.md → Tooling`).
+**Step 1.** Compose the list of objects to export in `repoobjects.txt` (one full metadata-object name per line, e.g. `Справочник.Контрагенты`). Build the list via `metadatasearch` or `search_metadata` (see `content/skills/mcp-1c-tools/SKILL.md`).
 
-**Step 2.** Run the export through Designer. Objects are exported **in full**, strictly into the specified directory — **do NOT create new subdirectories**.
+**Step 2.** Choose the export tool:
+
+- If `Test-Path '{PLATFORM_PATH}\bin\ibcmd.exe'` succeeds **and** `IBCMD_CONFIG` is set in `.dev.env` — use **Step 2a (ibcmd)**.
+- Otherwise — use **Step 2b (Designer)**. `ibcmd infobase config` does not work with clustered server infobases — for those, always use Designer.
+
+**Step 2a.** Partial export via `ibcmd`. The object list is read from `repoobjects.txt` and passed as positional arguments:
+
+```powershell
+$objects = Get-Content repoobjects.txt | Where-Object { $_.Trim() -ne '' }
+& '{PLATFORM_PATH}\bin\ibcmd.exe' infobase config export objects `
+    --config='{IBCMD_CONFIG}' `
+    --user='{IB_USER}' `
+    --password='{IB_PASSWORD}' `
+    --recursive `
+    --out='{EXPORT_PATH}' `
+    --extension={EXTENSION_NAME} `
+    @objects *>&1 | Tee-Object -FilePath '{LOG_PATH}'
+```
+
+Drop unset optional flags (`--user`, `--password`, `--extension`). `--recursive` exports subordinate objects (attributes, tabular sections, forms, templates).
+
+**Step 2b.** Partial export via Designer (fallback). Objects are exported **in full**, strictly into the specified directory — **do NOT create new subdirectories**.
 
 ```powershell
 & '{PLATFORM_PATH}\bin\1cv8.exe' DESIGNER `

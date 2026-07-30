@@ -10,9 +10,7 @@ category: development
 
 ### Code Placement
 - Business logic — **in common modules**, not in form modules
-- Server common modules — suffixes: `*ServerCall`, `*ObjectModule`, `*ManagerModule`
-- Client common modules — suffix: `*Client`
-- Form-related modules — suffix: `*Forms`
+- Common-module names follow the БСП suffix convention: no suffix — server-only module (`РаботаСЗаказами`); `Клиент` — client-only (`РаботаСЗаказамиКлиент`); `КлиентСервер` — compiled on both sides; `ВызовСервера` — server module callable from the client; `Глобальный` — global client module; `ПовтИсп` — cached return values (повторное использование возвращаемых значений); `Переопределяемый` — project override hooks
 - Server object modules — mandatory preprocessor: `#Если Сервер Или ТолстыйКлиентОбычноеПриложение Или ВнешнееСоединение Тогда`
 
 ### "Result-Structure" Pattern
@@ -41,8 +39,8 @@ Reduce nesting by returning early on precondition failures:
 ### "Value Table Search" Pattern
 
 ```bsl
-ПараметрыОтбора = Новый Структура("ВидСпецодежды", ТекущаяСтрока.ВидСпецодежды);
-НайденныеСтроки = ТаблицаДанных.НайтиСтроки(ПараметрыОтбора);
+СтруктураОтбора = Новый Структура("ВидСпецодежды", ТекущаяСтрока.ВидСпецодежды);
+НайденныеСтроки = ТаблицаДанных.НайтиСтроки(СтруктураОтбора);
 Если НайденныеСтроки.Количество() = 0 Тогда
 	Продолжить;
 КонецЕсли;
@@ -86,7 +84,7 @@ Always check key existence before access:
 ```
 
 ### Collection Normalization
-Normalize input to a single collection type for uniform processing. Use `CommonClientServer.ValueInArray()` for single-to-array conversion.
+Normalize input to a single collection type for uniform processing. Use `ОбщегоНазначенияКлиентСервер.ЗначениеВМассиве()` (БСП) for single-to-array conversion.
 
 ## 2. Extensions
 
@@ -96,8 +94,9 @@ Normalize input to a single collection type for uniform processing. Use `CommonC
 3. **Typical code modification** (last resort)
 
 ### Extension Directives
-- `&Перед` / `&После` — preferred
-- `&Вместо` — only for functions, with mandatory `ПродолжитьВызов()`
+- `&Перед` / `&После` — preferred for simple interception
+- `&ИзменениеИКонтроль` — only when the method body must be modified; change markers (`#Вставка` / `#Удаление`) and `ПродолжитьВызов()` are **mandatory** (without `ПродолжитьВызов()` the original method does not execute)
+- Interceptor semantics, `ПродолжитьВызов()` rules, and extension anti-patterns — `extension-patterns.md` (practical companion)
 
 ### Placement Rules (when `{NEW_OBJECTS_IN} = main_configuration`)
 - New metadata objects → main configuration
@@ -139,11 +138,13 @@ Visual form editing in extensions — **minimize**. Changes — programmatically
 - Logging — `ПодробноеПредставлениеОшибки(ИнформацияОбОшибке())`, NOT `КраткоеПредставлениеОшибки()`.
 - Empty exception handlers are **PROHIBITED** — always log or re-raise.
 
-### Dates
-- On server — `ТекущаяДатаСеанса()` instead of `ТекущаяДата()`. See `platform-solutions.md §6`.
+> **Positive companion — `logging-strategy.md`.** This section is the *bans and minimum standards* side of error handling. The positive side (when to write to the event log at all, severity levels, event-category naming `<Subsystem>.<Operation>.<Outcome>`, structured payload via `ДанныеЖурналаРегистрации`, secrets / PII bans, rotation) lives in `logging-strategy.md`. Read both whenever you add or review error-handling code.
 
-### Queries — Authoritative Rules
-- Verify metadata attributes (existence, names, types) **before** writing a query — see `AGENTS.md → Tooling`.
+### Dates
+- On server — `ТекущаяДатаСеанса()` instead of `ТекущаяДата()`. See `platform-solutions.md §6 → "Time on the server"`.
+
+### Queries
+- Verify metadata attributes (existence, names, types) **before** writing a query — see `AGENTS.md → MCP Tool Calling` (rule #3 «verify before writing»; metadata-first via `get_object_dossier` / `metadatasearch`).
 - Look for existing query examples before writing complex queries (`templatesearch`, `search_code`).
 - Query text formatting — on a new line at the same indentation level as the variable declaration:
 
@@ -165,7 +166,9 @@ Visual form editing in extensions — **minimize**. Changes — programmatically
 - Use `Запрос.УстановитьПараметр()` instead of string concatenation — prevents SQL injection and improves plan caching.
 - For complex data retrieval prefer batch queries with temporary tables over multiple separate queries.
 - Temporary tables — prefixed with `ВТ_`.
-- `ВНУТРЕННЕЕ СОЕДИНЕНИЕ` is preferred over `ЛЕВОЕ СОЕДИНЕНИЕ` when possible.
+- Choose the join type from the required result semantics. Use `ВНУТРЕННЕЕ СОЕДИНЕНИЕ` when
+  rows without a match must be discarded. Use `ЛЕВОЕ СОЕДИНЕНИЕ` when source rows must be
+  preserved, and handle `NULL` explicitly.
 - When accessing registers — filter by dimensions first (in virtual table parameters, not in `ГДЕ`).
 - Do not modify register movements directly — only via the posting mechanism.
 - When a limited result set is needed — use `ПЕРВЫЕ N`.
@@ -182,7 +185,7 @@ Visual form editing in extensions — **minimize**. Changes — programmatically
 
 ## 4. Data Access — Reference Attribute Access
 
-**Direct dot-notation access on references** (e.g. `Контрагент.ИНН`) loads the entire object from the database. **[Project rule — stricter than ITS standard:** outside trivial single-call handlers, the rule is a hard ban; in simple, non-loop code with one or two attributes ITS allows it, but the project default is to use dedicated БСП methods.**]**
+**Direct dot-notation access on references** (e.g. `Контрагент.ИНН`) loads the entire object from the database. **[Project rule — stricter than ITS standard.]** Outside trivial single-call handlers, the rule is a hard ban; in simple, non-loop code with one or two attributes ITS allows it, but the project default is to use dedicated БСП methods.
 
 Use these methods instead:
 
@@ -195,19 +198,19 @@ Use these methods instead:
 
 ### Caching and Batch Retrieval
 
-- Cache repeated reference-attribute lookups via `Соответствие` (Map). Full example — `anti-patterns.md §8 "Missing Caching"`.
+- Cache repeated reference-attribute lookups via `Соответствие` (Map). Full example — `anti-patterns.md §8 → "Missing Caching"`.
 - For multiple references prefer batch queries (`ОбщегоНазначения.ЗначенияРеквизитовОбъектов`, or `ВЫБРАТЬ ... ГДЕ Ссылка В (&МассивСсылок)`) over per-reference calls in loops. Temp-table template — `anti-patterns.md → "Batch Query with Temp Table"`.
 
 ## 5. Performance Headlines
 
-Mandatory baseline. Detailed anti-pattern catalog with severity — in `anti-patterns.md`. Platform pitfalls (long-running ops, temporary storage, collection search, external components, locks) — in `platform-solutions.md`.
+Mandatory baseline. Detailed anti-pattern catalog with severity — in `anti-patterns.md`. Platform pitfalls (long-running ops, temporary storage, collection search, external components) — in `platform-solutions.md`. Managed-lock theory and transaction patterns (configuration lock mode, implicit vs explicit transactions, canonical lock ordering, deadlock prevention, technological-log diagnostics) — in **`locks-and-transactions.md`**.
 
 - **Server-side bulk.** Run mass operations on the server; avoid client-server round trips inside loops. Server methods that do not access form data — `&НаСервереБезКонтекста`.
 - **Queries.** Never inside loops — use batch queries and temporary tables. Use `ПЕРВЫЕ N` when only a subset is needed. Index every filter/join field in metadata.
 - **Privileged mode.** `УстановитьПривилегированныйРежим(Истина)` — only when needed and always paired with `УстановитьПривилегированныйРежим(Ложь)`. Check current state via `ПривилегированныйРежим()`.
 - **Caching.** Cache repeated computations — `Соответствие` per call, session parameters per session, information registers cross-session. Reference attributes — via `ОбщегоНазначения.ЗначенияРеквизитов*` with a cache.
-- **Collections.** Bulk fill — `ЗаполнитьЗначенияСвойств()`. Search: ≤ ~100 elements — `Найти()` / `НайтиПоЗначению()` is fine; ≥ ~1000 elements or inside a loop — index on `Соответствие` (O(1)) or `ТаблицаЗначений.Индексы.Добавить(...)` + `НайтиСтроки()`. See `platform-solutions.md §7`.
-- **Transactions.** Keep them short, no user interaction inside. Account for implicit transactions (e.g. object write).
+- **Collections.** Bulk fill — `ЗаполнитьЗначенияСвойств()`. Search: ≤ ~100 elements — `Найти()` / `НайтиПоЗначению()` is fine; ≥ ~1000 elements or inside a loop — index on `Соответствие` (O(1)) or `ТаблицаЗначений.Индексы.Добавить(...)` + `НайтиСтроки()`. See `platform-solutions.md §7 → "Searching in collections: choosing by complexity"`.
+- **Transactions and managed locks.** Keep transactions short; no user interaction, no long-running operations, no external services inside. Account for implicit transactions (object write opens its own). Lock managed data **before** reading it, then read, then write — see `locks-and-transactions.md` for the full pattern set (posting with several registers, mass operations, status-log updates) and the project-wide lock-ordering contract. The worked posting example also lives in `platform-solutions.md §9 → "Managed locks and deadlock prevention"`.
 
 ## 6. Code Smells (see `anti-patterns` rule for the full catalog)
 

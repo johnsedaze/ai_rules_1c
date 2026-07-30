@@ -13,19 +13,20 @@ Applies to integration code: HTTP services, REST clients, web services, file exc
 - Check whether a ready-made solution already exists in БСП via `ssl_search` (subsystems "Интернет-поддержка пользователей", "Обмен данными", "Получение файлов из Интернета", "Цифровая подпись"). The required scheme is often already implemented.
 - Find existing integrations in the configuration via `templatesearch` and `search_code` (semantic mode, queries like "HTTP запрос", "отправка JSON", "парсинг ответа").
 - Agree the contract with the user explicitly: method, URL/endpoint, payload format, authentication scheme, timeouts, retry policy, and logging.
+- For EmplDocs / PA Docs integrations, use the product documentation at <https://padocs.empldocs.app/> as the authoritative external contract source before writing or changing requests, payloads, or authentication logic.
 
 For the full MCP playbook see `tooling-playbooks.md → Integrations`.
 
 ## 2. Long-running and blocking operations
 
-- Network calls are potentially long-running. Run all integration operations in the background through the БСП **"Long-running operations"** subsystem (`ДлительныеОперации.ВыполнитьФункцию`), not through a direct `ФоновыеЗадания` call. See `platform-solutions.md §2`.
-- On the client — no synchronous HTTP calls; use `НачатьВыполнение*` or an async wrapper (template — `platform-solutions.md §8`).
+- Network calls are potentially long-running. Run all integration operations in the background through the БСП **"Long-running operations"** subsystem (`ДлительныеОперации.ВыполнитьФункцию`), not through a direct `ФоновыеЗадания` call. See `platform-solutions.md §2 → "Long-running operations"`.
+- On the client — no synchronous HTTP calls; use `НачатьВыполнение*` or an async wrapper (template — `platform-solutions.md §8 → "External components on the thin client"`).
 
 ## 3. HTTP client
 
-- Use platform `HTTPСоединение` / `HTTPЗапрос` or the БСП wrapper. `КомпонентаHTTPСервисы` and third-party COM objects are forbidden (see `dev-standards-architecture.md §3 "Cross-Platform Compatibility"`).
+- Use platform `HTTPСоединение` / `HTTPЗапрос` or the БСП wrapper. `КомпонентаHTTPСервисы` and third-party COM objects are forbidden (see `dev-standards-architecture.md §3 → "Cross-Platform Compatibility"`).
 - Connection timeout and read timeout MUST be set **explicitly** — use values from `.dev.env` or configuration constants, not magic numbers in code.
-- Any response code different from the expected one MUST be turned into a meaningful exception with `ПодробноеПредставлениеОшибки(ИнформацияОбОшибке())` written to the event log. See `dev-standards-architecture.md §3 "Error Handling"`.
+- Any response code different from the expected one MUST be turned into a meaningful exception with `ПодробноеПредставлениеОшибки(ИнформацияОбОшибке())` written to the event log. See `dev-standards-architecture.md §3 → "Error Handling"`.
 
 ## 4. Serialization and data contract
 
@@ -35,7 +36,7 @@ For the full MCP playbook see `tooling-playbooks.md → Integrations`.
 
 ## 5. Security
 
-- Credentials, tokens, API keys — only via **write-protected configuration constants** or the БСП "Безопасное хранение паролей" subsystem. Hardcoding is forbidden (`dev-standards-architecture.md §3`).
+- Credentials, tokens, API keys — only via **write-protected configuration constants** or the БСП "Безопасное хранение паролей" subsystem. Hardcoding is forbidden (`dev-standards-architecture.md §3 → "Security"`).
 - Validate the token/session before each request; implement token refresh centrally.
 
 ## 6. Idempotency and retries
@@ -52,4 +53,4 @@ For the full MCP playbook see `tooling-playbooks.md → Integrations`.
 
 For every new integration module record at the top (or in the metadata-object card): the external system, the contract (URL, method, format), the authentication scheme, the required roles, and a link to the requirements document.
 
-> **Note.** A previous version of this rule suggested prototyping integrations in Python and porting to 1C. That contradicts the project policy (`AGENTS.md → Project info`: code is in 1C only). Out-of-1C prototyping is acceptable locally for contract debugging, but Python or other languages do not enter the repository or the production code.
+Local out-of-1C prototyping (curl, Postman, ad-hoc scripts) is acceptable for contract debugging only. Production code stays in BSL — Python or other languages do not enter the repository.

@@ -2,41 +2,14 @@
 description: Extract configuration objects from infobase to files for editing
 ---
 
-# Выгрузка объектов конфигурации из ИБ в файлы
+# /getconfigfiles — extract configuration objects from an infobase
 
-См. полное описание правила в `content/rules/getconfigfiles.md` (после установки — `.ai-rules/rules/getconfigfiles.md`).
+The full procedure — parameters, `repoobjects.txt`, the `ibcmd` / Designer tool selection, the PowerShell templates, and the log check — is owned by the rule **`getconfigfiles.md`**. Read it from the canonical rules directory (source: `content/rules/getconfigfiles.md`) and follow it exactly; do not improvise flags that are not in the rule.
 
-## Параметры
+Quick facts (details and templates — in the rule):
 
-Все пути и идентификаторы — через плейсхолдеры из `.dev.env`. Если значения неизвестны — запросить у пользователя.
-
-| Плейсхолдер | Назначение |
-|---|---|
-| `{PLATFORM_PATH}` | Каталог установки платформы 1С (содержит `bin\1cv8.exe`) |
-| `{INFOBASE_PATH}` | Путь к файловой ИБ или строка подключения |
-| `{IB_USER}` | Имя пользователя ИБ |
-| `{IB_PASSWORD}` | Пароль (если задан) |
-| `{EXPORT_PATH}` | Каталог выгрузки исходников |
-| `{EXTENSION_NAME}` | Имя расширения (опустить, если выгружаем из основной конфигурации) |
-| `{LOG_PATH}` | Файл лога Designer’а |
-
-## Шаги
-
-1. Сформировать список объектов к выгрузке в `repoobjects.txt` (одно полное имя метаданного объекта на строку). Списки собирать через `metadatasearch` / `search_metadata`.
-2. Запустить выгрузку:
-
-```powershell
-& '{PLATFORM_PATH}\bin\1cv8.exe' DESIGNER `
-    /F '{INFOBASE_PATH}' `
-    /N '{IB_USER}' `
-    /P '{IB_PASSWORD}' `
-    /DisableStartupMessages `
-    /DumpConfigToFiles {EXPORT_PATH} `
-    -listFile repoobjects.txt `
-    -Extension {EXTENSION_NAME} `
-    /Out {LOG_PATH}
-```
-
-Объекты выгружаются полностью, строго в `{EXPORT_PATH}` — без создания подкаталогов. При выгрузке из основной конфигурации убрать `-Extension {EXTENSION_NAME}`.
-
-3. Проверить `{LOG_PATH}` на ошибки.
+- All parameters come from `.dev.env` (classification and ask-policy — `dev-standards-env.md`). Only `INFOBASE_PATH` and `PLATFORM_PATH` are blocking — if either is empty, ask the user once and write the value to `.dev.env`.
+- `IB_USER` / `IB_PASSWORD` / `LOG_PATH` are **Defaulted** — empty = no authentication / no password (`/N` / `/P` / `--user` / `--password` omitted) / `$env:TEMP\1cv8.log` (Windows) or `$TMPDIR/1cv8.log` (POSIX). Apply silently, **never ask up front**; re-ask `IB_USER` / `IB_PASSWORD` only on a platform authentication error, `LOG_PATH` only if the resolved path is non-writable.
+- Build the object list in `repoobjects.txt` (one fully qualified metadata-object name per line) via `metadatasearch` / `search_metadata` before exporting.
+- The `ibcmd` path requires both `{PLATFORM_PATH}\bin\ibcmd.exe` and a filled `IBCMD_CONFIG`; clustered server infobases always use Designer.
+- Inspect `{LOG_PATH}` for errors before starting any edits.

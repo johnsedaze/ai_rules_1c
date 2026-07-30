@@ -54,8 +54,9 @@ you edit it manually, the installer marks it `userModified` and stops
 overwriting it. To pick up changes after editing `Configuration.xml`,
 delete `openspec/project.md` and re-run `install.ps1 update` or `install.sh update`.
 
-If the project is not a 1C source dump (no `Configuration.xml`), the file
-is **not** generated.
+If the project is not a 1C source dump (no `Configuration.xml`), the bundled
+fallback `project.md` remains with `unknown` values until real metadata is
+available.
 
 ## Activating slash commands
 
@@ -75,6 +76,7 @@ After installation you should already see, depending on which tools are active:
 - Codex — only SKILLs under `.codex/skills/openspec-*/SKILL.md` (Codex has no project slash commands)
 - OpenCode — `.opencode/command/opsx-{apply,archive,explore,propose}.md`
 - Kilo Code — `.kilo/workflows/opsx-{apply,archive,explore,propose}.md`
+- Kilo Code — `.kilocode/workflows/opsx-{apply,archive,explore,propose}.md` (legacy path shipped by the upstream OpenSpec bundle; current Kilo Code auto-migrates `.kilocode/workflows/` to `.kilo/commands/` on startup — see `adapters/kilocode.yaml`)
 
 …plus matching `openspec-{propose,apply-change,archive-change,explore}/SKILL.md`
 folders under each tool's `skills/` directory. Restart your IDE for the
@@ -119,7 +121,7 @@ For deeper guidance see:
 The detailed agent-side rules for how to read and update this folder live in:
 
 - source repository: [`content/rules/sdd-integrations.md`](../content/rules/sdd-integrations.md)
-- installed project: `.ai-rules/rules/sdd-integrations.md`
+- installed project: the canonical rules directory referenced from `AGENTS.md`
 
 That file is loaded on demand whenever an SDD framework is detected in the project.
 
