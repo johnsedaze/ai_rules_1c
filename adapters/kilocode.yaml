@@ -60,45 +60,16 @@ schemaVersion: 3
 
 detection:
   - exists: ".kilo/"
-<<<<<<< HEAD
-
-rules:
-  copyTo: ".kilo/rules/{name}.md"
-=======
   - exists: ".kilocode/"
 
 rules:
   copyTo: ".kilo/rules-1c/{name}.md"
->>>>>>> origin/original
   frontmatter:
     keep: [description, alwaysApply]
     drop: [globs, category]
 
 agents:
   copyTo: ".kilo/agents/{name}.md"
-<<<<<<< HEAD
-  
-  frontmatter:
-    keep: [description]
-    
-    # All 1C agents from content/agents/ are subagents (per AGENTS.md)
-    add:
-      mode: "subagent"
-      temperature: 0.2
-      steps: 15
-      permission:
-        task:
-          "*": "deny"
-          "general": "allow"
-          "explore": "allow"
-        edit: "allow"
-        bash: "allow"
-    
-    drop: [name, tools, modelHint, allowParallel, reasoningEffort]
-
-commands:
-  copyTo: ".kilo/workflows/{name}.md"
-=======
   frontmatter:
     # Kilo custom-agent frontmatter supports `model`; preserve the
     # installer-resolved model tier instead of silently dropping it.
@@ -112,7 +83,6 @@ commands:
 
 commands:
   copyTo: ".kilo/commands/{name}.md"
->>>>>>> origin/original
   frontmatter:
     keep: [description]
     drop: [argumentHint, allowedTools]
@@ -123,11 +93,6 @@ skills:
 
 mcp:
   source: "content/mcp-servers.json"
-<<<<<<< HEAD
-  target: "kilo.jsonc"
-  schema: mcp
-  format: jsonc
-=======
   target: ".kilo/kilo.json"
   schema: kilo-mcp
   format: json
@@ -143,4 +108,3 @@ mcp:
   # there only adds confusion in `/checkmcp` diagnostics).
   legacyTargets:
     - ".kilocode/mcp.json"
->>>>>>> origin/original
