@@ -1,0 +1,70 @@
+# Adapter: Qwen Code (qwenlm.github.io/qwen-code-docs)
+#
+# Describes how to copy and adapt files from content/ for Qwen Code CLI.
+# Read by both installation channels (AI-agent installer and install.ps1).
+#
+# Schema: closed adapter schema described in AGENT-INSTALL.md (Lean placement)
+# and implemented by install.ps1.
+# Notes:
+#   - Always-on context: Qwen loads `QWEN.md` (configurable via
+#     `context.fileName`). This toolkit keeps the shared root `AGENTS.md` as
+#     the authoritative always-on file and writes a minimal `QWEN.md` stub
+#     that points at it (same pattern as Claude Code's `CLAUDE.md`).
+#   - On-demand rules go under `.qwen/rules-1c/` and are loaded only when
+#     `AGENTS.md` tells the agent to open them. Do NOT place the full
+#     on-demand set into a directory Qwen would eagerly ingest as memory.
+#   - Subagents: `.qwen/agents/` (Markdown + YAML frontmatter; Qwen accepts
+#     Claude Code-compatible fields such as `name`, `description`, `tools`,
+#     `model`).
+#   - Custom slash commands: `.qwen/commands/{name}.md`.
+#   - Skills: `.qwen/skills/{name}/SKILL.md` (Agent Skills standard).
+#   - MCP lives inside the shared project settings file
+#     `.qwen/settings.json` under the top-level `mcpServers` key. HTTP
+#     servers MUST use `httpUrl` (not `url` — `url` is SSE-only in Qwen).
+#     The installer deep-merges only `mcpServers` so other settings keys
+#     (model, permissions, …) survive `update`.
+
+tool: qwen
+schemaVersion: 1
+
+detection:
+  - exists: ".qwen/"
+  - exists: "QWEN.md"
+
+rules:
+  copyTo: ".qwen/rules-1c/{name}.md"
+  frontmatter:
+    keep: [description, alwaysApply]
+    drop: [globs, category]
+
+agents:
+  copyTo: ".qwen/agents/{name}.md"
+  frontmatter:
+    keep: [name, description, tools, modelHint, isSubagent]
+    rename:
+      modelHint: model
+    drop: [allowParallel, reasoningEffort]
+
+commands:
+  copyTo: ".qwen/commands/{name}.md"
+  frontmatter:
+    keep: [description]
+    drop: [argumentHint, allowedTools]
+
+skills:
+  copyTo: ".qwen/skills/{name}/"
+  mode: verbatim
+
+mcp:
+  source: "content/mcp-servers.json"
+  target: ".qwen/settings.json"
+  schema: qwen-mcp
+  format: json
+  # `.qwen/settings.json` is the SHARED Qwen project config. Deep-merge only
+  # the top-level `mcpServers` key (HTTP entries use `httpUrl`).
+  merge: true
+  mergeKey: mcpServers
+
+entry:
+  target: "QWEN.md"
+  template: "See @AGENTS.md for project instructions.\n"

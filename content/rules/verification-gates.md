@@ -25,9 +25,9 @@ impact-analysis evidence.
 
 ## Hard gates — run on every full-cycle change
 
-You MUST run all five gates in order. Each gate has an explicit pass / fail criterion and an explicit retry budget. When a required validator is not exposed in the current session, follow the graceful-degradation subsections (after Gate 3 and inside Gate 4) instead of silently skipping.
+You MUST run all five gates in order. Each gate has an explicit pass / fail criterion and an explicit retry budget. When a required validator is not exposed in the current session, follow the graceful-degradation subsections (after Gate 3 and inside Gate 4) instead of silently skipping. **Gate 3a is conditional** — it runs only when its own trigger fires and its server is exposed; it never replaces Gates 1–3.
 
-The gate descriptions below state the `full` (default) behaviour. When `VERIFICATION_DEPTH` is `standard` or `lite`, Gates 1–3 are modulated per `verification-policy.md → "Verification depth levels"` — but a full-cycle change on any promotion-trigger path always runs the complete chain regardless of the level (the safety floor).
+The gate descriptions below state the `full` behaviour — the strictest level, and the one a promotion-trigger path always gets. The project default is `standard`: same three validators, one mandatory confirmation after a blocking fix instead of an open-ended retry budget. When `VERIFICATION_DEPTH` is `standard` or `lite`, Gates 1–3 are modulated per `verification-policy.md → "Verification depth levels"` — but a full-cycle change on any promotion-trigger path always runs the complete chain regardless of the level (the safety floor).
 
 ### Gate 1 — Syntax (`syntaxcheck`)
 
@@ -58,6 +58,27 @@ Gates 1–3 are mandatory only when the corresponding validator is exposed in th
 3. Delivery is not blocked, but a transactional / metadata / public-API change that went through without Gate 2 must be flagged as needing a follow-up validation run in a session where the server is exposed.
 
 Skipping a gate without recording it under Risks is a defect — the same rule as Gate 4's graceful degradation below.
+
+### Gate 3a — Live-IB smoke check (conditional, `1c-data-mcp`)
+
+Gates 1–3 are static: they confirm that the code parses, follows standards, and has no detectable logic smell. They cannot confirm that a **query actually resolves against this configuration's metadata**. Gate 3a closes exactly that gap, and only that gap.
+
+**Triggers — run when all of the following hold:**
+
+1. The change authored or modified 1C **query text** (module code, DCS scheme, dynamic list) **or** a self-contained BSL function with no side effects whose result the static validators cannot confirm.
+2. `1c-data-mcp` is exposed in the current session (`validatequery` / `vcexecutecode` visible in the tool schema).
+3. The connected infobase is a development / test base. **On a production infobase this gate is not run** — record the skip and move on.
+
+**Execution:**
+
+- **Query text → `validatequery`.** Pass criterion: `"нет ошибок"`. This parses the query and resolves parameters; it does **not** execute it, does not verify that tables / fields exist, and does not evaluate RLS (`docs/1c-data-mcp.md`).
+- **Pure function → `vcexecutecode`** with a **read-only** fragment. Pass criterion: `"ошибок нет"`, or the expected value returned via `Результат`.
+- **Mutations are out of scope for this gate.** No `Записать()` / `Удалить()` / `НачалоТранзакции` / register movements — the read-only discipline and the consent rules of `docs/1c-data-mcp.md → Safety and discipline` apply unchanged. If confirming the change requires a mutation, that is a task for `1c-tester` against a test base, not for this gate.
+- **Budget:** one call per artifact. Re-run only after the artifact changed — the no-change-repeat rule (`AGENTS.md → MCP Tool Calling → C.2`) applies.
+
+**Failure is blocking for the artifact,** the same as a Gate 1 `error`: fix the query / fragment and re-run once against the changed state.
+
+**When a trigger fired but the gate could not run** (server not exposed, or a production IB), record one line in the delivery summary under **Risks**: *"Gate 3a not run — `<reason>`; query text validated statically only."* Delivery is not blocked. This gate never substitutes for Gates 1–3 and never justifies lowering them.
 
 ### Gate 4 — Impact analysis (only when public surface changed)
 
@@ -90,5 +111,5 @@ Skip this gate **only** when no metadata XML was touched.
 When XML was edited:
 
 - **`verify_xml`** on every modified XML file. Pass criterion: zero schema violations.
-- For non-trivial metadata edits (new objects, attributes, tabular sections, forms): prefer the `1c-metadata-manage` skill over hand-edited XML. If hand edits were used, additionally cross-check `metadata-xml-workarounds.md` for the recurring traps (LineNumber, PagesGroupExtInfo, Page.enabled, UID uniqueness).
+- **Execution-path check.** Metadata mutations (new objects, attributes, tabular sections, forms, layouts) must have gone through the `1c-metadata-manage` skill / `1c-metadata-manager` subagent — hard gate per `AGENTS.md → Skills and Subagents`. If hand edits were used, this gate passes only when the exception is one of those documented in `SKILL.md → Hard rule` **and** is stated in the delivery summary (`Metadata tooling: hand-edit — <exception>`); additionally cross-check `metadata-xml-workarounds.md` for the recurring traps (LineNumber, PagesGroupExtInfo, Page.enabled, UID uniqueness). Hand-edited metadata without a stated documented exception is a gate failure — the same class as a skipped validator.
 - For `Form.xml` edits: also confirm the form opens in Configurator without warnings — schema validity is necessary but not sufficient.

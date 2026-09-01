@@ -7,7 +7,25 @@ description: "1C metadata management — create, edit, validate, and remove conf
 
 Use this skill when the task involves **1C metadata structure** (creating, editing, validating, or removing configuration objects, forms, reports, layouts, roles, extensions, or databases).
 
-> **Recommendation.** For any change to metadata XML — prefer this skill (or the `metadata-manager` subagent) over hand-editing `Configuration.xml`, `Form.xml`, `Role.xml` and similar files. The PowerShell tools under `tools/` handle BOM, encodings, UUID regeneration, ChildObjects ordering and cross-references that are easy to break manually. Direct XML edits are acceptable only for unambiguous one-line fixes (e.g. correcting a synonym typo).
+## Hard rule
+
+Any **mutation** of metadata XML — `Configuration.xml`, object XML, `Form.xml`, MXL / SKD layouts, `Role.xml`, subsystems, command interfaces — is executed **through this skill** (dispatch below → domain doc → PowerShell tools) or through the `1c-metadata-manager` subagent. The tools under `tools/` handle BOM, encodings, UUID regeneration, `ChildObjects` ordering and cross-references that are easy to break manually. Hand-editing these files while the skill is available is a **defect** (`AGENTS.md → Skills and Subagents`), not a slower-but-acceptable alternative.
+
+The same gate covers **infobase operations** (create / run, load / dump configuration, `/UpdateDBCfg`, web publication): use the `db-ops` / `web-ops` tools of this skill ([db-manage.md](docs/db-manage.md), [web-manage.md](docs/web-manage.md)) or the matching slash command (`/update1cbase`, `/loadfrom1cbase`, `/getconfigfiles`, `/deploy-and-test`) — never an ad-hoc `1cv8.exe` / `ibcmd` command line composed from memory. DB updates follow the iterative retry discipline (`db-manage.md → Update retry discipline`).
+
+The only exceptions:
+
+- **Unambiguous one-line fix** of an existing value that cannot break structure — a synonym / comment typo, a boolean flag flip on an existing element. Anything that adds / removes / reorders elements, touches UUIDs, or spans more than one line of XML is not "one-line".
+- **Skill not available in the session** (files not installed / not exposed) — state it once in one line, then hand-edit with `metadata-xml-workarounds.md` loaded and validate per `verification-gates.md → Gate 5`.
+- **Read-only analysis** of metadata XML is not a mutation — reading files directly is fine (subject to `mcp-first-search.md` for locating them).
+
+## Vendor support gate
+
+Every mutating tool of this skill refuses to edit an object of a **typical configuration on vendor support** that is locked ("на замке"), and refuses to delete one that has not been taken off support. This is not advisory: the run exits `1` with a diagnostic. Editing such an object directly breaks future vendor updates silently, so the refusal is the correct outcome, not an obstacle to route around by hand-editing the XML.
+
+The default answer when a typical object needs a change is an **extension** (`cfe-borrow` / `cfe-patch-method`) — support state stays untouched and updates keep working. Deliberately changing support state is the `support-edit` tool. Both paths, plus the `SUPPORT_GUARD` modes in `.dev.env` (`deny` — default / `warn` / `off`), are in [support-manage.md](docs/support-manage.md).
+
+In every case the post-edit validation (`verify_xml` / skill validation scripts) still applies. When reporting a task that mutated metadata / forms / layouts, name the path used in one line (`Metadata tooling: <tool / subagent>` or `hand-edit — <exception>`) per `AGENTS.md → Skills and Subagents`.
 
 ## Path conventions
 
@@ -42,6 +60,7 @@ The subagent already knows how to read the skill docs, execute PowerShell script
 | Task Domain | Keywords | File |
 |---|---|---|
 | Metadata objects — create, edit, analyze, remove, validate | catalog, document, register, enum, constant, module, attribute, tabular section | [meta-manage.md](docs/meta-manage.md) |
+| UUID integrity — duplicate identities in an XML dump | UUID, duplicate uuid, TypeId, ValueId, identity collision, load failure after generation | [uuid-check.md](docs/uuid-check.md) |
 | Managed forms — design, create, edit, analyze, validate | form, Form.xml, UI, elements, commands, events | [form-manage.md](docs/form-manage.md) |
 | Managed-form layout patterns — archetypes, naming conventions, advanced patterns | form patterns, archetype, layout, naming, ERP form, list form, document form, wizard | [form-patterns.md](docs/form-patterns.md) → canonical `content/rules/form-patterns.md` |
 | Form-compile DSL reference — full JSON DSL spec for `1c-form-compile`, `--from-object` mode, presets | form DSL, form-compile, autoCmdBar, columnGroup, RadioButtonField, --from-object, form preset | [form-compile-dsl.md](docs/form-compile-dsl.md) |
@@ -52,7 +71,9 @@ The subagent already knows how to read the skill docs, execute PowerShell script
 | BSP/SSL registration and commands | BSP, SSL, ExternalDataProcessorInfo, registration, command | [bsp-manage.md](docs/bsp-manage.md) |
 | Configuration (CF) — create, edit, analyze, validate | configuration, Configuration.xml, CF | [cf-manage.md](docs/cf-manage.md) |
 | Extensions (CFE) — create, borrow, diff, patch, validate | extension, CFE, borrow, interceptor, patch | [cfe-manage.md](docs/cfe-manage.md) |
-| Databases — registry, create, run, load, dump | database, infobase, .v8-project.json, create DB, run 1C | [db-manage.md](docs/db-manage.md) |
+| Vendor support state — "на замке", editability, off-support | support, поддержка, на замке, замок, vendor updates, support-guard, SUPPORT_GUARD | [support-manage.md](docs/support-manage.md) |
+| XDTO packages — analyze, create from XSD, export, edit, validate | XDTO, package, XSD, XML schema, ФабрикаXDTO, namespace, exchange format, EnterpriseData | [xdto-manage.md](docs/xdto-manage.md) |
+| Databases — create, run, load, dump, DT backup | database, infobase, create DB, run 1C, dt, backup, .v8-project.json | [db-manage.md](docs/db-manage.md) |
 | Subsystems — create, edit, analyze, validate | subsystem, command interface, ChildObjects | [subsystem-manage.md](docs/subsystem-manage.md) |
 | Command interface — edit, validate | CommandInterface.xml, commands visibility, groups | [interface-manage.md](docs/interface-manage.md) |
 | Templates/layouts management — add, remove | template, layout, SpreadsheetDocument, HTML template | [template-manage.md](docs/template-manage.md) |

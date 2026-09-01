@@ -279,10 +279,15 @@ After containers are up, write the MCP config for the active client. **The file 
 | Client | Config file | Top-level key | Per-server shape |
 |---|---|---|---|
 | Cursor | `.cursor/mcp.json` (project) or `%USERPROFILE%\.cursor\mcp.json` (global) | `mcpServers` | `{ "url": "...", "connection_id": "..." }` |
-| Claude Code | `.mcp.json` (project) or `~/.claude/mcp.json` (global) | `mcpServers` | `{ "url": "...", "connection_id": "..." }` |
+| Claude Code | `.mcp.json` (project) or `~/.claude/mcp.json` (global) | `mcpServers` | `{ "type": "http", "url": "..." }` |
+| Command Code | `.mcp.json` (project; shared with Claude Code) or `~/.commandcode/mcp.json` (user) | `mcpServers` | `{ "type": "http", "url": "..." }` (`type` aliases `transport`) |
 | Kilo Code (v7.x+) | `.kilo/kilo.json` (project) — also `kilo.json` / `kilo.jsonc` / `.kilo/kilo.jsonc`; global `~/.config/kilo/kilo.json` | `mcp` | `{ "type": "remote", "url": "...", "enabled": true }` |
 | OpenCode | `opencode.json` (project) or `~/.config/opencode/opencode.json` (global) | `mcp` | `{ "type": "remote", "url": "..." }` |
 | Codex CLI | `.codex/config.toml` (project) or `~/.codex/config.toml` (global) | `[mcp_servers."<id>"]` | TOML keys `url = ...`, `connection_id = ...` |
+| Qwen Code | `.qwen/settings.json` (project) or `~/.qwen/settings.json` (user) | `mcpServers` | HTTP: `{ "httpUrl": "..." }`; SSE: `{ "url": "..." }`; stdio: `{ "command", "args?" }` |
+| Kimi Code CLI | `.kimi-code/mcp.json` (project) | `mcpServers` | `{ "url": "..." }` |
+| Cline | `~/.cline/mcp.json` or `~/.cline/data/settings/cline_mcp_settings.json` (**global only** — no project MCP file) | `mcpServers` | `{ "url": "..." }` or stdio `{ "command", "args?" }` |
+| Pi | — | — | No built-in MCP; use a Pi extension if needed |
 
 Canonical fragments (Cursor / Claude Code — `mcpServers`):
 
@@ -334,7 +339,23 @@ OpenCode (`mcp` key) — **the server key MUST start with a letter**. OpenCode n
 }
 ```
 
-Keep only the servers that were actually installed. If the project has `.ai-rules.json`, the MCP config is rendered by the 1c-rules installer (which already implements the per-client table above and deep-merges Kilo's `mcp` key) — re-render through `/updaterules` instead of editing the file manually. Ask the user to restart the client (Cursor / Claude Code / Codex / OpenCode / Kilo Code) so the MCP session is reinitialized.
+Qwen Code (merge only `mcpServers` into `.qwen/settings.json`; HTTP uses `httpUrl`):
+
+```json
+{
+  "mcpServers": {
+    "1c-docs-mcp":           { "httpUrl": "http://localhost:8003/mcp" },
+    "1c-graph-metadata-mcp": { "httpUrl": "http://localhost:8006/mcp" },
+    "1c-code-metadata-mcp": { "httpUrl": "http://localhost:8000/mcp" },
+    "1c-ssl-mcp":            { "httpUrl": "http://localhost:8008/mcp" },
+    "1c-templates-mcp":      { "httpUrl": "http://localhost:8004/mcp" },
+    "1c-syntax-checker-mcp": { "httpUrl": "http://localhost:8002/mcp" },
+    "1c-code-check-mcp":     { "httpUrl": "http://localhost:8007/mcp" }
+  }
+}
+```
+
+Keep only the servers that were actually installed. If the project has `.ai-rules.json`, the MCP config is rendered by the 1c-rules installer (which already implements the per-client table above and deep-merges Kilo's `mcp` / Qwen's `mcpServers` keys) — re-render through `/updaterules` instead of editing the file manually. Ask the user to restart the client so the MCP session is reinitialized. For Cline, configure MCP once in the global Cline settings (the rules installer does not write a project MCP file).
 
 ### 8. Final check
 

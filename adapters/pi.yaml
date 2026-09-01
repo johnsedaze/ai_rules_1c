@@ -1,0 +1,45 @@
+# Adapter: Pi coding agent (pi.dev / earendil-works/pi)
+#
+# Describes how to copy and adapt files from content/ for the Pi coding agent.
+# Read by both installation channels (AI-agent installer and install.ps1).
+#
+# Schema: closed adapter schema described in AGENT-INSTALL.md (Lean placement)
+# and implemented by install.ps1.
+# Notes:
+#   - Pi loads always-on context from root `AGENTS.md` (and optionally
+#     `CLAUDE.md`) via walk-up discovery. No separate entry stub is needed.
+#   - On-demand rules are placed under `.pi/rules-1c/` and referenced from
+#     `AGENTS.md` by path. Pi does not auto-discover a rules folder — the
+#     agent reads files when `AGENTS.md` instructs it to.
+#   - Skills: `.pi/skills/{name}/SKILL.md` (loaded after the project is
+#     trusted; also discovers `.agents/skills/`).
+#   - Slash-style reusable prompts are Pi "prompt templates" under
+#     `.pi/prompts/{name}.md` (invoked as `/name`). Source `content/commands/`
+#     are mapped here — there is no separate commands directory.
+#   - Pi has no first-class project subagent directory and no built-in MCP
+#     support ("No MCP" in Pi docs). This adapter therefore omits `agents`
+#     and `mcp`. Subagent role descriptions remain reachable through
+#     `AGENTS.md` → on-demand rules → `subagents.md` when needed; MCP must
+#     be supplied by a Pi extension if the user wants it.
+
+tool: pi
+schemaVersion: 1
+
+detection:
+  - exists: ".pi/"
+
+rules:
+  copyTo: ".pi/rules-1c/{name}.md"
+  frontmatter:
+    keep: [description, alwaysApply]
+    drop: [globs, category]
+
+commands:
+  copyTo: ".pi/prompts/{name}.md"
+  frontmatter:
+    keep: [description]
+    drop: [argumentHint, allowedTools]
+
+skills:
+  copyTo: ".pi/skills/{name}/"
+  mode: verbatim

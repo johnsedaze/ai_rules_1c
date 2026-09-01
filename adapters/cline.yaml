@@ -1,0 +1,55 @@
+# Adapter: Cline (docs.cline.bot)
+#
+# Describes how to copy and adapt files from content/ for Cline (VS Code
+# extension + CLI). Read by both installation channels (AI-agent installer
+# and install.ps1).
+#
+# Schema: closed adapter schema described in AGENT-INSTALL.md (Lean placement)
+# and implemented by install.ps1.
+# Notes:
+#   - Always-on context: root `AGENTS.md` (Cline reads it as a cross-tool
+#     rule source). Do NOT dump the full on-demand rule set into
+#     `.clinerules/` — Cline eagerly loads every `.md` / `.txt` there into
+#     every conversation and would explode the context window.
+#   - On-demand rules: `.cline/rules-1c/` (explicit load via `AGENTS.md`),
+#     same `rules-1c` pattern as Kilo / Kimi / Qwen.
+#   - Project skills / agents: `.cline/skills/`, `.cline/agents/` (see
+#     docs.cline.bot/getting-started/config).
+#   - Project slash-commands / workflows are not a stable project-local
+#     contract in current Cline (workflows resolve from the global
+#     `~/.cline/data/workflows/` tree). This adapter intentionally does
+#     not invent a commands path — invoke workflows through skills /
+#     `AGENTS.md` references instead.
+#   - MCP is global-only for Cline (`~/.cline/mcp.json` or
+#     `~/.cline/data/settings/cline_mcp_settings.json`). There is no
+#     project-scoped MCP file the installer may write, so this adapter
+#     omits `mcp`. Users configure 1C MCP servers once in the Cline MCP
+#     settings UI / `cline config mcp`; `/installmcp` documents the shape.
+#   - Detection accepts both `.cline/` (current) and `.clinerules/`
+#     (legacy eager-rules directory) so existing Cline projects are found
+#     without re-installing.
+
+tool: cline
+schemaVersion: 1
+
+detection:
+  - exists: ".cline/"
+  - exists: ".clinerules/"
+
+rules:
+  copyTo: ".cline/rules-1c/{name}.md"
+  frontmatter:
+    keep: [description, alwaysApply]
+    drop: [globs, category]
+
+agents:
+  copyTo: ".cline/agents/{name}.md"
+  frontmatter:
+    keep: [name, description, modelHint]
+    rename:
+      modelHint: model
+    drop: [tools, allowParallel, reasoningEffort, isSubagent]
+
+skills:
+  copyTo: ".cline/skills/{name}/"
+  mode: verbatim

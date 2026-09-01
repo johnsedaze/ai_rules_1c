@@ -1,0 +1,62 @@
+# Adapter: Command Code (commandcode.ai)
+#
+# Describes how to copy and adapt files from content/ for Command Code CLI.
+# Read by both installation channels (AI-agent installer and install.ps1).
+#
+# Schema: closed adapter schema described in AGENT-INSTALL.md (Lean placement)
+# and implemented by install.ps1.
+# Notes:
+#   - Always-on memory is root `AGENTS.md` (also accepts
+#     `.commandcode/AGENTS.md`). This toolkit keeps the shared root file.
+#   - On-demand rules go under `.commandcode/rules-1c/` and are loaded only
+#     when `AGENTS.md` points at them — Command Code has no eager rules
+#     folder equivalent to Cursor's `.cursor/rules/`.
+#   - Custom agents: `.commandcode/agents/{name}.md`.
+#   - Custom slash commands: `.commandcode/commands/{name}.md`.
+#   - Skills: `.commandcode/skills/{name}/SKILL.md` (also discovers
+#     `.agents/skills/`; `.commandcode/` wins on name conflicts).
+#   - Project MCP scope is root `.mcp.json` with the `mcpServers` dictionary
+#     (same path Claude Code uses). Command Code accepts `type` as an alias
+#     for `transport`, so the Claude Code HTTP shape
+#     `{ "type": "http", "url": "..." }` is used. When both `claude-code`
+#     and `command-code` are active they share one `.mcp.json` and the
+#     installer tracks joint ownership in the manifest.
+
+tool: command-code
+schemaVersion: 1
+
+detection:
+  - exists: ".commandcode/"
+
+rules:
+  copyTo: ".commandcode/rules-1c/{name}.md"
+  frontmatter:
+    keep: [description, alwaysApply]
+    drop: [globs, category]
+
+agents:
+  copyTo: ".commandcode/agents/{name}.md"
+  frontmatter:
+    # Command Code documents `tools` as a comma-separated string; dropping
+    # the source YAML array avoids a shape mismatch. Agents inherit the
+    # parent tool set (equivalent to tools: "*").
+    keep: [name, description, modelHint]
+    rename:
+      modelHint: model
+    drop: [tools, allowParallel, reasoningEffort, isSubagent]
+
+commands:
+  copyTo: ".commandcode/commands/{name}.md"
+  frontmatter:
+    keep: [description]
+    drop: [argumentHint, allowedTools]
+
+skills:
+  copyTo: ".commandcode/skills/{name}/"
+  mode: verbatim
+
+mcp:
+  source: "content/mcp-servers.json"
+  target: ".mcp.json"
+  schema: mcpServers-claude
+  format: json

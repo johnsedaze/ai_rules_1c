@@ -35,9 +35,17 @@ After the table, list only actionable fixes. Do not include secret values from `
    - in the source repository of `1c-rules`, report **WARN** and continue with source-layout checks.
 6. Verify that the current tool has the files it can actually load:
    - Cursor: `.cursor/rules/`, `.cursor/commands/`, `.cursor/mcp.json` when installed;
-   - Claude Code: `.claude/rules/`, `.claude/agents/`, `.claude/commands/`, MCP config when installed;
+   - Claude Code: `.claude/rules-1c/` (on-demand rules referenced through `AGENTS.md` — deliberately **not** `.claude/rules/`, which Claude Code v2.0.64+ auto-loads in full at session start), `.claude/agents/`, `.claude/commands/`, MCP config when installed; managed rule files left in `.claude/rules/` from older installs are **legacy** and the `update` flow removes them (user-authored files there are kept);
    - Codex: `.codex/skills/`, `.codex/config.toml` when installed;
-   - OpenCode: `.opencode/command/`, `.opencode/agent/`, `.opencode/rules/`, and `opencode.json` at the **project root** (top-level `mcp` key) when installed — MCP lives in the root `opencode.json`, **not** `.opencode/opencode.json` (OpenCode does not read a config file under `.opencode/`); a leftover `.opencode/opencode.json` from older installs is **legacy** and the `update` flow removes it;
+   - OpenCode: `.opencode/command/`, `.opencode/agent/` (also accept `.opencode/agents/` if present), `.opencode/rules/`, and `opencode.json` at the **project root** (top-level `mcp` key) when installed — MCP lives in the root `opencode.json`, **not** `.opencode/opencode.json` (OpenCode does not read a config file under `.opencode/`); a leftover `.opencode/opencode.json` from older installs is **legacy** and the `update` flow removes it;
+   - **OpenCode agent frontmatter hard gate** (when `.opencode/agent/` or `.opencode/agents/` exists): every `*.md` agent file must **not** have a `tools` **array** in its YAML frontmatter (`tools: ["Read", …]`). OpenCode validates `tools` as object | undefined; a Cursor-style array makes it reject the whole config and refuse to start (`Configuration is invalid … Expected object | undefined, got […] tools`). Correct installed shape uses a `permission` object (`read`/`edit`/`grep`/`glob`/`bash`: `allow`|`deny`) and `mode: subagent`|`primary` — produced by `adapters/opencode.yaml → toolsToPermission`. Any file still carrying a `tools` array → **FAIL**. Repair: `install.ps1 update -Source <clone> -AssumeYes -ForcePaths .opencode/agent/*` (or re-apply the adapter transform on the agent channel). Do **not** confuse source `content/agents/*.md` (arrays are correct there) with installed `.opencode/agent/*.md`. Quick check:
+
+     ```powershell
+     Get-ChildItem .opencode\agent, .opencode\agents -Filter *.md -File -ErrorAction SilentlyContinue |
+       ForEach-Object {
+         if ((Get-Content $_.FullName -Raw) -match '(?ms)\A---\r?\n.*?^tools:\s*\[') { "FAIL: $($_.Name)" }
+       }
+     ```
    - Kilo Code: `.kilo/rules-1c/` (on-demand rules referenced through `AGENTS.md`), `.kilo/commands/`, `.kilo/agents/`, `.kilo/skills/`, `.kilo/kilo.json` (top-level `mcp` key) when installed; a leftover `.kilocode/mcp.json` from older installs is **legacy** — current Kilo CLI / Kilo Code v7.x+ no longer reads it and the `update` flow removes it;
    - other: `.ai-agent/rules/`, `.ai-agent/agents/`, `.ai-agent/commands/`, `.ai-agent/skills/`, `.ai-agent/mcp.json`.
 
@@ -73,12 +81,14 @@ Also check:
    - `EXPORT_PATH` when the repository root is not the configuration source directory;
    - `PLATFORM_VERSION` when platform-version-specific docs or checks are needed.
 
-   Do **not** treat `INFOBASE_KIND`, `IB_USER`, `IB_PASSWORD`, `LOG_PATH`, `UI_TESTING`, `QUICKFIX_MAX_LINES`, `DEBUG_FAST_PATH`, or `VERIFICATION_DEPTH` as critical even when empty — they are **Defaulted** per `content/rules/dev-standards-env.md`. Empty `INFOBASE_KIND` = `file`, empty `IB_USER` / `IB_PASSWORD` = no authentication / no password (the `/N` / `/P` flags are simply omitted), empty `LOG_PATH` = `$env:TEMP\1cv8.log` (Windows) / `$TMPDIR/1cv8.log` (POSIX), empty `UI_TESTING` = `manual` (UI tests run only on explicit request), empty `QUICKFIX_MAX_LINES` = `40`, empty `DEBUG_FAST_PATH` = `standard`, empty `VERIFICATION_DEPTH` = `full`. Report them as "uses default" rather than as a missing value.
+   Do **not** treat `INFOBASE_KIND`, `IB_USER`, `IB_PASSWORD`, `LOG_PATH`, `UI_TESTING`, `QUICKFIX_MAX_LINES`, `DEBUG_FAST_PATH`, `AGENT_MODEL`, or `VERIFICATION_DEPTH` as critical even when empty — they are **Defaulted** per `content/rules/dev-standards-env.md`. Empty `INFOBASE_KIND` = `file`, empty `IB_USER` / `IB_PASSWORD` = no authentication / no password (the `/N` / `/P` flags are simply omitted), empty `LOG_PATH` = `$env:TEMP\1cv8.log` (Windows) / `$TMPDIR/1cv8.log` (POSIX), empty `UI_TESTING` = `manual` (UI tests run only on explicit request), empty `QUICKFIX_MAX_LINES` = `40`, empty `DEBUG_FAST_PATH` = `standard`, empty `VERIFICATION_DEPTH` = `standard`, empty `AGENT_MODEL` = no model profile (the base model-neutral ruleset). Report them as "uses default" rather than as a missing value.
 4. Verify that `PLATFORM_PATH` contains `bin\1cv8.exe`.
 5. When `INFOBASE_KIND` is non-empty, verify that it is `file` or `server`.
 6. When `UI_TESTING` is non-empty, verify that it is `manual`, `auto`, or `off`; any other value is treated as `manual` (report **WARN**).
-7. When `VERIFICATION_DEPTH` is non-empty, verify that it is `full`, `standard`, or `lite`; any other value is treated as `full` (report **WARN**).
-8. Never print `IB_PASSWORD`, tokens, license keys, or full connection strings. Report only whether they are set.
+7. When `VERIFICATION_DEPTH` is non-empty, verify that it is `full`, `standard`, or `lite`; any other value is treated as `standard` (report **WARN**).
+8. When `AGENT_MODEL` is non-empty, verify that it is `opus5`, `sonnet5`, `fable5`, or `gpt56` and that the matching rule file (`model-<slug>.md`, or `.mdc` on Cursor) exists in the rules directory. An unrecognised value means no profile is applied — report **WARN** with the fix `/rulesmodel <модель>`. A missing profile file for a set value is **FAIL** (the install is incomplete — run `/updaterules`). When the value names a model different from the one you are running, report **WARN**, say which profile you actually apply per `model-adaptation.md → §2`, and suggest `/rulesmodel auto`. Empty is **OK** ("uses default"), never a WARN.
+9. **Optional UI tooling (non-blocking).** When `UI_TESTING=auto` or the user is about to run web UI tests: if `agent-browser` is not on `PATH` and no `agent-browser` MCP entry is in the active client config — report **WARN** and suggest `/install-agent-browser` (token-efficient default per `ui-testing-tools.md`). Absence of `windows-mcp` is not a WARN (desktop CV is last resort only).
+10. Never print `IB_PASSWORD`, tokens, license keys, or full connection strings. Report only whether they are set.
 
 Pass criterion: `.dev.env` exists, has the critical operational fields needed for load/dump/deploy/test commands, and does not require guessing.
 
@@ -117,6 +127,7 @@ Evaluate whether the installed rules match the current repository and current ag
 3. Confirm that `AGENTS.md` points to source or installed on-demand rules that the current agent can read.
 4. Confirm that command names in `content/commands/` are available in the active tool's command location after installation.
 5. Confirm that `caveman` matches the `.dev.env` `CAVEMAN` mode: `on` (default) — active on all tasks; `auto` — dev-only (on for implementation / debugging / deployment, off for review / analysis / documentation); `off` — never auto-on until an explicit force (`/caveman on` or "caveman please").
+6. Confirm the active-model layer: report which profile is in force (`AGENT_MODEL` from `.dev.env`, or none) and whether it matches the model you are running. State in one line the 2–3 behaviour deltas currently applied. If no profile is set and the model you run has one (`opus5` / `sonnet5` / `fable5` / `gpt56`), report **WARN** — not FAIL — and suggest `/rulesmodel auto`; the base ruleset is fully functional without it. Never report a profile as weakening a gate: if a profile file appears to relax a hard gate, that is a **FAIL** on the ruleset, per `model-adaptation.md → §4`.
 
 Pass criterion: the current agent has the always-on rules, can reach on-demand rules or their source copies, and the rule triggers match the current task type.
 
@@ -133,7 +144,7 @@ Scope:
 5. **Anchor convention.** Every section reference of the form `<file>.md §N` and `<file>.md §N → "Title"` resolves: `§N` corresponds to a `## N. ...` heading in the target file; `§N → "Title"` corresponds to a `### Title` (or any `###`/`####` whose stripped title matches) inside that `## N.` section. References that mix old styles (`§3 Queries` without quotes, `§3 "Queries"` without arrow, `§3.6 Queries`) are reported as **stale**.
 6. **Markdown link integrity.** Standard `[text](path)` and `[text](path#anchor)` links resolve to existing files; anchors normalize (lowercase, spaces → `-`, punctuation stripped) and must match a heading in the target file.
 7. **Script path integrity.** PowerShell examples in skill docs reference scripts that exist under the source skill folder or the active tool's installed skill folder. Examples must not point to a non-existent root-level `skills/` directory unless that directory is part of the installed layout.
-8. **Adapter-layout consistency.** Paths mentioned in `README.md`, `AGENT-INSTALL.md`, `openspec/README.md`, command docs, and skill docs match `adapters/*.yaml`. Check Codex, Kilo Code, OpenCode, and `other` explicitly because their command / skill / MCP locations differ from the common `.cursor` / `.claude` layout.
+8. **Adapter-layout consistency.** Paths mentioned in `README.md`, `AGENT-INSTALL.md`, `openspec/README.md`, command docs, and skill docs match `adapters/*.yaml`. Check Codex, Kilo Code, OpenCode, Qwen, Command Code, Cline, Pi, and `other` explicitly because their command / skill / MCP locations differ from the common `.cursor` / `.claude` layout.
 9. **Policy drift.** Flag duplicate or conflicting rule wording for the same behavior, especially `.dev.env`, `infobasesettings.md` migration, MCP fallback order, and docs-fix vs BSL validation.
 10. **Convention checks.** Topics declared as a single source of truth (`.dev.env`, `mcp-1c-tools` skill, `dev-standards-code-style.md → "Forbidden Calls and Constructs"`, `dev-standards-architecture.md §3 → "Queries"`, `coding-standards.md` as the index of detail files, etc.) are claimed by **exactly one** file; the same topic is not declared authoritative in two different places. Flag any duplicate authoritative claims.
 
@@ -152,8 +163,9 @@ Classify the project:
 For **Not ready**, provide the shortest safe repair path, for example:
 
 1. Run `install.ps1 init` or `/updaterules`.
-2. Fill `.dev.env` critical fields.
-3. Fix Markdown integrity findings from Check 7.
-4. Generate or refresh `openspec/project.md`.
-5. Start/reconnect MCP servers with `/checkmcp`.
-6. Restart the AI client so MCP tools and rules are reloaded.
+2. If OpenCode agent frontmatter gate failed — re-run `install.ps1 update -Source <clone> -AssumeYes -ForcePaths .opencode/agent/*` (do not copy `content/agents/*.md` verbatim).
+3. Fill `.dev.env` critical fields.
+4. Fix Markdown integrity findings from Check 7.
+5. Generate or refresh `openspec/project.md`.
+6. Start/reconnect MCP servers with `/checkmcp`.
+7. Restart the AI client so MCP tools and rules are reloaded.

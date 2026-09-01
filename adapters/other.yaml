@@ -1,12 +1,13 @@
 # Adapter: Other (universal fallback)
 #
 # Generic, tool-agnostic placement for AI clients that are NOT in the explicit
-# supported list (cursor, claude-code, codex, opencode, kilocode). The intent
-# is to produce the most portable layout possible:
+# supported list (cursor, claude-code, codex, opencode, kilocode, kimi, qwen,
+# command-code, cline, pi). The intent is to produce the most portable layout
+# possible:
 #
 #   - AGENTS.md at the project root (de-facto standard, read by most modern
 #     AI coding agents — Cursor, Claude Code, Codex, OpenCode, KiloCode,
-#     Aider, Cline, Continue, Cody, etc.).
+#     Aider, Continue, Cody, etc.).
 #   - On-demand rules / agents / commands / skills / MCP config under a
 #     neutral, non-conflicting directory: `.ai-agent/`. Any tool that does
 #     not auto-discover them can be told to read them via AGENTS.md.

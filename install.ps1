@@ -51,11 +51,11 @@
 
 .PARAMETER ForcePaths
     For `update`: restrict -Force to the listed project-relative paths
-    (exact match or `*` wildcard, e.g. `.claude/rules/tooling-playbooks.md`
+    (exact match or `*` wildcard, e.g. `.claude/rules-1c/tooling-playbooks.md`
     or `.claude/skills/*`). Implies -Force for the matching paths only; all
     other drifted files keep the user's edits. Multiple paths are passed
     COMMA-separated (PowerShell array syntax):
-    `-ForcePaths .claude/skills/*,.claude/rules/forms.md` — a space-separated
+    `-ForcePaths .claude/skills/*,.claude/rules-1c/forms.md` — a space-separated
     list would bind only the first path.
 
 .PARAMETER McpMode
@@ -127,7 +127,7 @@ $script:MemoryFileName = 'memory.md'
 $script:LlmRulesFileName = 'LLM-RULES.md'
 $script:DevEnvFileName = '.dev.env'
 $script:DevEnvExampleName = '.dev.env.example'
-$script:SupportedTools = @('cursor', 'claude-code', 'codex', 'opencode', 'kilocode', 'other')
+$script:SupportedTools = @('cursor', 'claude-code', 'codex', 'opencode', 'kilocode', 'kimi', 'qwen', 'command-code', 'cline', 'pi', 'other')
 $script:ManagedBlocks = @('core', 'user-defined', 'openspec')
 $script:LastChannel = 'powershell'
 $script:Utf8NoBom = New-Object System.Text.UTF8Encoding $false
@@ -994,6 +994,32 @@ function New-McpConfig-Other {
     return New-McpConfig-Cursor $Servers
 }
 
+function New-McpConfig-Qwen {
+    # Qwen Code project MCP lives in `.qwen/settings.json` under `mcpServers`
+    # (https://qwenlm.github.io/qwen-code-docs/en/users/features/mcp/).
+    # HTTP (streamable) servers MUST use `httpUrl`; `url` is SSE-only.
+    # Stdio servers use `command` / `args` / `env`. The installer deep-merges
+    # only the `mcpServers` key (see adapter `mcp.mergeKey`) so other
+    # settings survive `update`.
+    param([array]$Servers)
+    $dict = [ordered]@{}
+    foreach ($s in $Servers) {
+        $entry = [ordered]@{}
+        if ($s.url) {
+            $entry['httpUrl'] = $s.url
+            if ($s.headers) { $entry['headers'] = $s.headers }
+        }
+        elseif ($s.command) {
+            $entry['command'] = $s.command
+            if ($s.args) { $entry['args'] = $s.args }
+            if ($s.env) { $entry['env'] = $s.env }
+        }
+        $dict[$s.id] = $entry
+    }
+    $root = [ordered]@{ mcpServers = $dict }
+    return (ConvertTo-Json $root -Depth 10)
+}
+
 function ConvertTo-OpenCodeMcpKey {
     # OpenCode exposes MCP tools to the model as `<server-key>_<tool>`, taking
     # the key verbatim from the `mcp` object (it only replaces characters
@@ -1075,9 +1101,12 @@ function New-McpConfig {
     switch ($ToolId) {
         'cursor' { return (New-McpConfig-Cursor $Servers) }
         'claude-code' { return (New-McpConfig-ClaudeCode $Servers) }
+        'command-code' { return (New-McpConfig-ClaudeCode $Servers) }
         'codex' { return (New-McpConfig-Codex $Servers) }
         'opencode' { return (New-McpConfig-OpenCode $Servers) }
         'kilocode' { return (New-McpConfig-Kilocode $Servers) }
+        'kimi' { return (New-McpConfig-Other $Servers) }
+        'qwen' { return (New-McpConfig-Qwen $Servers) }
         'other' { return (New-McpConfig-Other $Servers) }
         default { throw "Unknown tool id: $ToolId" }
     }
@@ -1161,17 +1190,18 @@ function ConvertTo-OrderedHashtable {
 function Get-ToolDetectionSignals {
     param([string]$Root)
     $signals = @{
-        'cursor'      = @((Test-Path (Join-Path $Root '.cursor')))
-        'claude-code' = @((Test-Path (Join-Path $Root '.claude')), (Test-Path (Join-Path $Root 'CLAUDE.md')))
-        'codex'       = @((Test-Path (Join-Path $Root '.codex')))
-        'opencode'    = @((Test-Path (Join-Path $Root '.opencode')), (Test-Path (Join-Path $Root 'opencode.json')))
-<<<<<<< HEAD
-        'kilocode'    = @((Test-Path (Join-Path $Root '.kilo')))
-=======
-        'kilocode'    = @((Test-Path (Join-Path $Root '.kilo')), (Test-Path (Join-Path $Root '.kilocode')))
+        'cursor'       = @((Test-Path (Join-Path $Root '.cursor')))
+        'claude-code'  = @((Test-Path (Join-Path $Root '.claude')), (Test-Path (Join-Path $Root 'CLAUDE.md')))
+        'codex'        = @((Test-Path (Join-Path $Root '.codex')))
+        'opencode'     = @((Test-Path (Join-Path $Root '.opencode')), (Test-Path (Join-Path $Root 'opencode.json')))
+        'kilocode'     = @((Test-Path (Join-Path $Root '.kilo')), (Test-Path (Join-Path $Root '.kilocode')))
+        'kimi'         = @((Test-Path (Join-Path $Root '.kimi-code')), (Test-Path (Join-Path $Root '.kimi')))
+        'qwen'         = @((Test-Path (Join-Path $Root '.qwen')), (Test-Path (Join-Path $Root 'QWEN.md')))
+        'command-code' = @((Test-Path (Join-Path $Root '.commandcode')))
+        'cline'        = @((Test-Path (Join-Path $Root '.cline')), (Test-Path (Join-Path $Root '.clinerules')))
+        'pi'           = @((Test-Path (Join-Path $Root '.pi')))
         # 'other' is a manual-only fallback — never auto-detected.
-        'other'       = @()
->>>>>>> origin/original
+        'other'        = @()
     }
     $detected = @()
     foreach ($t in $script:SupportedTools) {
@@ -2185,6 +2215,117 @@ function Resolve-ModelTiers {
     return $vals
 }
 
+# ----------------------------------------------------------------------------
+# Active-model profile of the PARENT agent (AGENT_MODEL in .dev.env)
+#
+# Not to be confused with SUBAGENT_MODEL_* above: those pick the models the
+# SUBAGENTS run on and are stamped into agent files at placement time.
+# AGENT_MODEL names the model the parent agent itself runs on, so the ruleset
+# can adapt to that model's documented behaviour (content/rules/model-*.md,
+# router content/rules/model-adaptation.md). It is a DEFAULTED parameter read
+# by the agent at task time — every profile ships as an ordinary on-demand
+# rule, so switching the value needs no re-render and no client restart. The
+# installer only records the user's choice on first init; the /rulesmodel
+# slash command owns the key afterwards.
+#
+# Users write model names however they like, so the free-form input is
+# normalised here (the LLM channel does the same by judgement, see
+# content/commands/rulesmodel.md). Matching is by family + major version:
+# case-insensitive, punctuation- and prefix-insensitive, Russian spellings
+# accepted. A name that is not one of the four supported models resolves to
+# an empty value — the base ruleset is model-neutral and complete without a
+# profile, so "no match" is a valid outcome, never an error.
+
+$script:AgentModelKey = 'AGENT_MODEL'
+$script:AgentModelValue = $null
+$script:AgentModelProfiles = [ordered]@{
+    opus5   = 'Claude Opus 5'
+    sonnet5 = 'Claude Sonnet 5'
+    fable5  = 'Claude Fable 5 / Mythos 5'
+    gpt56   = 'GPT-5.6'
+}
+
+function Resolve-AgentModelSlug {
+    # Normalises a free-form model name to a profile slug from
+    # $script:AgentModelProfiles. Returns '' when nothing matches.
+    param([string]$Raw)
+
+    if ([string]::IsNullOrWhiteSpace($Raw)) { return '' }
+    $s = $Raw.Trim().ToLowerInvariant()
+    # Russian spellings first (before punctuation is stripped).
+    $s = $s -replace 'клод', 'claude' -replace 'опус', 'opus' -replace 'соннет', 'sonnet' `
+            -replace 'сонет', 'sonnet' -replace 'фейбл', 'fable' -replace 'фабл', 'fable' `
+            -replace 'мифос', 'mythos' -replace 'гпт', 'gpt' -replace 'опенаи', 'openai'
+    # Drop everything that is not a letter or a digit: spaces, dashes, dots,
+    # underscores, slashes, '#'. This also collapses provider prefixes and
+    # client-side variants into the same string ("anthropic/claude-opus-5#xhigh"
+    # -> "anthropicclaudeopus5xhigh").
+    $s = $s -replace '[^a-z0-9]', ''
+    if (-not $s) { return '' }
+
+    # Already a canonical slug (or the dotted gpt5.6 spelling collapsed to it).
+    foreach ($slug in @($script:AgentModelProfiles.Keys)) {
+        if ($s -eq $slug) { return $slug }
+    }
+    # Family + major version. Order matters: mythos is checked with fable.
+    if ($s -match 'fable5' -or $s -match 'mythos5' -or $s -match 'fable' -or $s -match 'mythos') { return 'fable5' }
+    if ($s -match 'opus5') { return 'opus5' }
+    if ($s -match 'sonnet5') { return 'sonnet5' }
+    if ($s -match 'gpt56') { return 'gpt56' }
+    return ''
+}
+
+function Read-AgentModelChoice {
+    # Interactive picker for AGENT_MODEL. Returns a slug or '' (no profile).
+    if ($NonInteractive) { return '' }
+    Write-Info ''
+    Write-Info '  Модель головного агента — под неё будут адаптированы правила (профиль поведения):'
+    Write-Info '    [1] Claude Opus 5               (opus5)'
+    Write-Info '    [2] Claude Sonnet 5             (sonnet5)'
+    Write-Info '    [3] Claude Fable 5 / Mythos 5   (fable5)'
+    Write-Info '    [4] GPT-5.6                     (gpt56)'
+    Write-Info '    [5] другая модель / не задавать (базовый свод правил, профиль не применяется)'
+    Write-Info '    [6] ввести название модели самому (в любом написании)'
+    $choice = Read-Required '  Выбор модели головного агента' '5'
+    switch ($choice) {
+        '1' { return 'opus5' }
+        '2' { return 'sonnet5' }
+        '3' { return 'fable5' }
+        '4' { return 'gpt56' }
+        '6' {
+            $raw = Read-Required '  Название модели (Enter — без профиля)' ''
+            $slug = Resolve-AgentModelSlug -Raw $raw
+            if (-not $slug -and $raw) {
+                Write-Warn "  модель '$raw' не распознана — профиль не применяется, действует базовый свод правил (сменить позже: /rulesmodel)"
+            }
+            return $slug
+        }
+        default { return '' }
+    }
+}
+
+function Resolve-AgentModel {
+    # Returns the AGENT_MODEL slug for this run. Cached so the interactive
+    # prompt fires once. An existing .dev.env always wins — user values are
+    # never re-asked and never rewritten by the installer.
+    param([string]$Root)
+
+    if ($null -ne $script:AgentModelValue) { return $script:AgentModelValue }
+    $val = ''
+    $envPath = Join-Path $Root $script:DevEnvFileName
+    if (Test-Path $envPath) {
+        $keys = Read-DevEnvKeys -Path $envPath
+        if ($keys.Contains($script:AgentModelKey)) {
+            $val = Resolve-AgentModelSlug -Raw ([string]$keys[$script:AgentModelKey])
+        }
+    }
+    elseif (-not $NonInteractive) {
+        $val = Read-AgentModelChoice
+    }
+    $script:AgentModelValue = $val
+    return $val
+}
+
 function Resolve-AgentModelTier {
     # Replaces the abstract `modelTier` key in an agent's frontmatter with the
     # concrete `modelHint` consumed by the adapters' keep/rename ops (and by
@@ -2355,7 +2496,7 @@ function Invoke-PlacePhase {
 # `other` is intentionally last: when combined with any "real" tool the real
 # tool's rules dir wins; `.ai-agent/rules/` becomes canonical only when
 # `other` is the only active tool.
-$script:RulesDirPriority = @('cursor', 'claude-code', 'kilocode', 'opencode', 'codex', 'other')
+$script:RulesDirPriority = @('cursor', 'claude-code', 'kilocode', 'kimi', 'qwen', 'command-code', 'cline', 'opencode', 'codex', 'pi', 'other')
 
 function Resolve-CanonicalRulesLayout {
     # Returns @{ Dir = <path>; Ext = <ext-without-dot> } for the highest-priority
@@ -2598,9 +2739,11 @@ function Invoke-McpPhase {
 
         # `mcp.merge: true` (set in adapter yaml) — when the target file is
         # a SHARED tool config (e.g. `.kilo/kilo.json` carries not only MCP
-        # but also `instructions`, `skills.paths`, custom permissions),
-        # do not overwrite the whole file. Instead read existing JSON,
-        # replace the top-level `mcp` key with our rendered value, keep
+        # but also `instructions`, `skills.paths`, custom permissions; or
+        # `.qwen/settings.json` carries model / permissions beside
+        # `mcpServers`), do not overwrite the whole file. Instead read
+        # existing JSON, replace the top-level merge key (default `mcp`,
+        # overridable via `mcp.mergeKey`) with our rendered value, keep
         # every other key untouched. New file path → write whole rendered
         # JSON as before.
         $mergeRequested = $false
@@ -2610,6 +2753,13 @@ function Invoke-McpPhase {
         elseif ($adapter.mcp -is [System.Collections.IDictionary] -and $adapter.mcp.Contains('merge')) {
             $mergeRequested = [bool]$adapter.mcp['merge']
         }
+        $mergeKey = 'mcp'
+        if ($adapter.mcp.PSObject.Properties.Match('mergeKey').Count -gt 0 -and $adapter.mcp.mergeKey) {
+            $mergeKey = [string]$adapter.mcp.mergeKey
+        }
+        elseif ($adapter.mcp -is [System.Collections.IDictionary] -and $adapter.mcp.Contains('mergeKey') -and $adapter.mcp['mergeKey']) {
+            $mergeKey = [string]$adapter.mcp['mergeKey']
+        }
 
         $finalContent = $content
         if ($mergeRequested -and (Test-Path $absTarget)) {
@@ -2618,17 +2768,18 @@ function Invoke-McpPhase {
                 $existingObj = $existingRaw | ConvertFrom-Json -ErrorAction Stop
                 $renderedObj = $content | ConvertFrom-Json -ErrorAction Stop
                 $merged = [ordered]@{}
-                # Preserve user keys in their original order, replacing only `mcp`.
+                # Preserve user keys in their original order, replacing only $mergeKey.
                 foreach ($prop in $existingObj.PSObject.Properties) {
-                    if ($prop.Name -ne 'mcp') { $merged[$prop.Name] = $prop.Value }
+                    if ($prop.Name -ne $mergeKey) { $merged[$prop.Name] = $prop.Value }
                 }
-                if ($renderedObj.PSObject.Properties.Match('mcp').Count -gt 0) {
-                    $merged['mcp'] = $renderedObj.mcp
+                if ($renderedObj.PSObject.Properties.Match($mergeKey).Count -gt 0) {
+                    $merged[$mergeKey] = $renderedObj.$mergeKey
                 }
-                # Append any non-`mcp` keys from rendered that the existing file lacks
-                # (defensive: future-proofs adapters that emit more than `mcp`).
+                # Append any non-mergeKey keys from rendered that the existing
+                # file lacks (defensive: future-proofs adapters that emit more
+                # than the merge key).
                 foreach ($prop in $renderedObj.PSObject.Properties) {
-                    if ($prop.Name -eq 'mcp') { continue }
+                    if ($prop.Name -eq $mergeKey) { continue }
                     if (-not $merged.Contains($prop.Name)) { $merged[$prop.Name] = $prop.Value }
                 }
                 $finalContent = (ConvertTo-Json $merged -Depth 20)
@@ -2640,14 +2791,24 @@ function Invoke-McpPhase {
         }
 
         Write-TextFile -Path $absTarget -Content ($finalContent + "`n")
+        $previousMcpEntry = $null
+        if ($Manifest.files.Contains($target)) { $previousMcpEntry = $Manifest.files[$target] }
         $mcpEntry = [ordered]@{
             source        = 'content/mcp-servers.json'
             installedHash = (Get-FileSha256 $absTarget)
         }
-        # `merged` marks a SHARED config (opencode.json / .kilo/kilo.json) that
-        # carries user keys besides `mcp`. On `remove`, such a file must NOT be
-        # deleted — only its top-level `mcp` key is stripped (see Invoke-Remove).
-        if ($mergeRequested) { $mcpEntry['merged'] = $true }
+        # `merged` marks a SHARED config (opencode.json / .kilo/kilo.json /
+        # `.qwen/settings.json`) that carries user keys besides the MCP
+        # payload. On `remove`, such a file must NOT be deleted — only its
+        # merge key is stripped (see Invoke-Remove).
+        if ($mergeRequested) {
+            $mcpEntry['merged'] = $true
+            $mcpEntry['mergeKey'] = $mergeKey
+        }
+        # Track joint ownership when several tools share one MCP target
+        # (currently Claude Code + Command Code both write `.mcp.json`).
+        $mcpOwners = @(Merge-ManifestOwners -Entry $previousMcpEntry -OwnerTool $tool)
+        if ($mcpOwners.Count -gt 0) { $mcpEntry['owners'] = $mcpOwners }
         $Manifest.files[$target] = $mcpEntry
         Write-Info "  [$tool] MCP config: $target"
     }
@@ -3566,13 +3727,19 @@ function Place-RootTemplates {
 #   LOG_PATH    (empty = $env:TEMP\1cv8.log),
 #   SUBAGENT_MODEL_CODING / SUBAGENT_MODEL_ANALYSIS / SUBAGENT_MODEL_LIGHT
 #   (empty = AI client default model; see SECTION 7b),
+#   AGENT_MODEL (empty = no model profile, base model-neutral ruleset; the
+#   parent agent's behaviour profile, toggled by the /rulesmodel command),
 #   ORCHESTRATION (empty = standard; toggled by the /economymode command),
 #   QUICKFIX_MAX_LINES (empty = 40; quick-fix line budget),
 #   DEBUG_FAST_PATH (empty = standard; debugging fast-path mode),
-#   VERIFICATION_DEPTH (empty = full; code-verification depth, toggled by
+#   VERIFICATION_DEPTH (empty = standard; code-verification depth, toggled by
 #   the /litemode command),
 #   CAVEMAN (empty = on; caveman communication-style auto-activation, toggled
-#   by the /caveman command).
+#   by the /caveman command),
+#   PLATFORM_ARGS / IBCMD_ARGS (empty = no extra platform arguments; passed to
+#   1cv8.exe / ibcmd by the 1c-metadata-manage db-* / epf-* tools),
+#   SUPPORT_GUARD (empty = deny; reaction of the vendor-support guard in the
+#   1c-metadata-manage mutating tools — deny | warn | off).
 
 function Find-PlatformPath {
     # Returns the path to the most recent installed 1C platform under
@@ -3715,6 +3882,12 @@ function Place-DevEnv {
         $val = Read-Required 'INFOBASE_PUBLISH_URL (URL веб-публикации для UI-тестов; пусто — UI-тесты пропускаются)' '';                      if ($val) { $text = Set-DevEnvValue -Text $text -Key 'INFOBASE_PUBLISH_URL' -Value $val }
     }
 
+    # Persist the parent agent's model profile (AGENT_MODEL). Asked once here,
+    # only while the file is being created — an existing .dev.env is never
+    # touched, and an empty value is fully valid (no profile, base ruleset).
+    $agentModel = Resolve-AgentModel -Root $Root
+    if ($agentModel) { $text = Set-DevEnvValue -Text $text -Key $script:AgentModelKey -Value $agentModel }
+
     # Persist subagent model tiers. The values were either asked once during
     # agent placement (Resolve-ModelTiers, init without .dev.env) or are still
     # unset; ask here only if placement never ran (e.g. degenerate tool set).
@@ -3739,6 +3912,12 @@ function Place-DevEnv {
     if ($detectedVersion) { Write-Info "    autodetected PLATFORM_VERSION = $detectedVersion" }
     if ($detectedPath)    { Write-Info "    autodetected PLATFORM_PATH    = $detectedPath" }
     if ($detectedPrefix)  { Write-Info "    autodetected PREFIX           = $detectedPrefix" }
+    if ($agentModel) {
+        Write-Info ("    AGENT_MODEL = $agentModel (" + [string]$script:AgentModelProfiles[$agentModel] + ") — профиль правил model-$agentModel.md")
+    }
+    else {
+        Write-Info '    AGENT_MODEL не задан — профиль модели не применяется, действует базовый свод правил (задать: /rulesmodel <модель>)'
+    }
 
     # Final sanity check: report only operation-scoped empty fields. No field
     # is globally mandatory; advisory values must never be presented as errors.
@@ -3895,7 +4074,10 @@ function Get-SourceFromUrl {
             & git -C $cacheDir reset --hard FETCH_HEAD 2>&1 | Out-Null
         }
         if ($LASTEXITCODE -ne 0) {
-            Write-Warn "Fetch failed; reusing existing cached checkout."
+            # A silent fallback to a stale checkout would install outdated rules
+            # while reporting success. Fail instead; the cached copy stays usable
+            # via an explicit -Source when offline work is intended.
+            throw ("Failed to refresh the cached source from {0} (git exit code {1}). Retry when the network is available, or pass the cached checkout explicitly: -Source `"{2}`"" -f $Url, $LASTEXITCODE, $cacheDir)
         }
     }
     else {
@@ -4084,6 +4266,9 @@ function Invoke-Init {
     if ($verify.Ok) { Write-Info "Verification OK: $($verify.Count) files checked" }
     else { Write-Warn "Verification found $($verify.Mismatches.Count) mismatch(es)"; $verify.Mismatches | ForEach-Object { Write-Warn "  $_" } }
 
+    Write-Section 'Phase 10b: OpenCode agent frontmatter gate'
+    Assert-OpenCodeAgentFrontmatter -Root $Root
+
     Write-Section 'Phase 11: Report'
     Write-Info "Installation complete."
     Write-Info "  Version: $version (via $($script:LastChannel) channel)"
@@ -4099,7 +4284,41 @@ function Invoke-Init {
 
     Write-EconomyModeAnnouncement
 
+    Write-RulesModelAnnouncement -Root $Root
+
     Write-RestartRecommendation -ActiveTools $activeTools -McpCount $manifest.mcpServers.Count
+}
+
+# Feature announcement for the active-model adaptation layer. Shown on every
+# init and once on the update that first places the /rulesmodel command.
+# Reports the current AGENT_MODEL so an install that left it empty (older
+# .dev.env, -NonInteractive) still tells the user how to switch it on.
+function Write-RulesModelAnnouncement {
+    param([string]$Root)
+
+    $current = ''
+    if ($Root) {
+        $envPath = Join-Path $Root $script:DevEnvFileName
+        if (Test-Path $envPath) {
+            $keys = Read-DevEnvKeys -Path $envPath
+            if ($keys.Contains($script:AgentModelKey)) {
+                $current = Resolve-AgentModelSlug -Raw ([string]$keys[$script:AgentModelKey])
+            }
+        }
+    }
+    Write-Info ""
+    Write-Info "Адаптация правил под модель: введите /rulesmodel <модель> в чате AI-клиента (название — в любом"
+    Write-Info "написании, команда сама его распознает; /rulesmodel auto — определить текущую модель)."
+    Write-Info "Поддерживаемые профили: opus5 (Claude Opus 5), sonnet5 (Claude Sonnet 5), fable5 (Claude Fable 5),"
+    Write-Info "gpt56 (GPT-5.6). Команда пишет AGENT_MODEL в .dev.env — действует на весь проект, включая новые чаты;"
+    Write-Info "перерендер и перезапуск клиента не нужны. Профиль настраивает только стиль и инициативу (длина"
+    Write-Info "отчётов, нарратив, делегирование, лишние самопроверки) и не ослабляет обязательные проверки."
+    if ($current) {
+        Write-Info ("Сейчас: AGENT_MODEL=$current (" + [string]$script:AgentModelProfiles[$current] + "). Выключить — /rulesmodel off.")
+    }
+    else {
+        Write-Info "Сейчас: AGENT_MODEL не задан — действует базовый (модель-нейтральный) свод правил."
+    }
 }
 
 # One-line feature announcement for the orchestrator economy mode. Shown on
@@ -4149,6 +4368,74 @@ function Invoke-Verify {
     return @{ Ok = ($mismatches.Count -eq 0); Count = $count; Mismatches = $mismatches }
 }
 
+# OpenCode hard gate: agent markdown frontmatter must NOT contain a `tools`
+# ARRAY. OpenCode (v1.1.1+) validates `tools` as object | undefined; a Cursor-
+# style list like `tools: ["Read", "Write", …]` makes OpenCode reject the whole
+# config and refuse to (re)start. The opencode adapter converts that list into
+# a `permission` object via `frontmatter.toolsToPermission` — this check catches
+# agent-channel installs that skipped the transform and copied content/agents
+# verbatim into `.opencode/agent/`.
+function Test-OpenCodeAgentFrontmatter {
+    param([string]$Root)
+
+    $dirs = @()
+    foreach ($rel in @('.opencode/agent', '.opencode/agents')) {
+        $abs = Join-Path $Root ($rel -replace '/', [IO.Path]::DirectorySeparatorChar)
+        if (Test-Path $abs) { $dirs += @{ Abs = $abs; Rel = $rel } }
+    }
+    if ($dirs.Count -eq 0) {
+        return @{ Ok = $true; Skipped = $true; Checked = 0; Violations = @() }
+    }
+
+    $violations = @()
+    $checked = 0
+    foreach ($d in $dirs) {
+        Get-ChildItem -Path $d.Abs -Filter '*.md' -File -ErrorAction SilentlyContinue | ForEach-Object {
+            $checked++
+            $relFile = ($d.Rel + '/' + $_.Name)
+            $text = Read-TextFile $_.FullName
+            $parts = Split-FrontmatterAndBody $text
+            $isArray = $false
+            if ($parts.Frontmatter -and $parts.Frontmatter.Contains('tools')) {
+                $toolsVal = $parts.Frontmatter['tools']
+                if ($toolsVal -is [System.Array]) { $isArray = $true }
+                elseif ($toolsVal -is [string] -and $toolsVal.Trim().StartsWith('[')) { $isArray = $true }
+            }
+            if (-not $isArray) {
+                # Fallback: raw frontmatter text (parser miss / odd quoting).
+                if ($text -match '(?ms)\A---\r?\n.*?^tools:\s*\[') { $isArray = $true }
+            }
+            if ($isArray) {
+                $violations += "$relFile : frontmatter ``tools`` is an array — OpenCode requires a ``permission`` object (see adapters/opencode.yaml → toolsToPermission). A raw tools array prevents OpenCode from starting."
+            }
+        }
+    }
+
+    return @{
+        Ok         = ($violations.Count -eq 0)
+        Skipped    = $false
+        Checked    = $checked
+        Violations = $violations
+    }
+}
+
+function Assert-OpenCodeAgentFrontmatter {
+    param([string]$Root)
+
+    $result = Test-OpenCodeAgentFrontmatter -Root $Root
+    if ($result.Skipped) { return $result }
+    if ($result.Ok) {
+        Write-Info "OpenCode agent frontmatter OK: $($result.Checked) file(s) under .opencode/agent(s)/"
+        return $result
+    }
+
+    Write-Err "OpenCode agent frontmatter INVALID — $($result.Violations.Count) file(s) still have a tools ARRAY:"
+    $result.Violations | ForEach-Object { Write-Err "  $_" }
+    Write-Err "Fix: re-run ``install.ps1 update -Source <clone> -AssumeYes -ForcePaths .opencode/agent/*`` (PowerShell channel applies toolsToPermission)."
+    Write-Err "Do NOT copy content/agents/*.md into .opencode/agent/ verbatim — that breaks OpenCode."
+    throw "OpenCode agent frontmatter gate failed ($($result.Violations.Count) file(s)). See errors above."
+}
+
 function Invoke-Update {
     param(
         [string]$Root,
@@ -4162,6 +4449,8 @@ function Invoke-Update {
     # Detect BEFORE placement whether /economymode was already installed, to
     # announce the feature exactly once — on the update that introduces it.
     $hadEconomyCommand = @($manifest.files.Keys | Where-Object { $_ -match 'economymode' }).Count -gt 0
+    # Same for /rulesmodel (active-model adaptation).
+    $hadRulesModelCommand = @($manifest.files.Keys | Where-Object { $_ -match 'rulesmodel' }).Count -gt 0
 
     $sourceRoot = Resolve-SourceRoot -Requested $SourceRootRequested
     Write-Info "Source: $sourceRoot"
@@ -4210,6 +4499,48 @@ function Invoke-Update {
             }
         }
         Write-Info "Migrated: removed $($legacyKeys.Count) legacy .ai-rules/rules/ entries"
+    }
+
+    # Claude Code (v2.0.64+) auto-loads every .md under .claude/rules/ without
+    # `paths` frontmatter into context at session start, so the adapter now
+    # installs on-demand rules under .claude/rules-1c/. Remove OUR tracked
+    # files from the legacy directory; files the user placed there personally
+    # are never tracked in the manifest and are kept, and the directory itself
+    # is removed only when it ends up empty.
+    Write-Section 'Migration: legacy .claude/rules/ (auto-loaded by Claude Code)'
+    $claudeLegacyKeys = @($manifest.files.Keys | Where-Object { $_ -like '.claude/rules/*' })
+    $claudeLegacyDirty = @()
+    foreach ($k in $claudeLegacyKeys) {
+        $abs = Join-Path $Root $k
+        if (Test-Path $abs) {
+            $entry = $manifest.files[$k]
+            $expected = if ($entry -and $entry.installedHash) { $entry.installedHash } else { '' }
+            $actual = Get-FileSha256 $abs
+            if ($expected -and ($actual -ne $expected)) { $claudeLegacyDirty += $k }
+        }
+    }
+    $proceedClaudeLegacy = $true
+    if ($claudeLegacyDirty.Count -gt 0) {
+        Write-Warn "Legacy .claude/rules/ contains user-modified managed files: $($claudeLegacyDirty.Count)"
+        $claudeLegacyDirty | ForEach-Object { Write-Warn "  $_" }
+        if (-not $NonInteractive -and -not $AssumeYes) {
+            $proceedClaudeLegacy = Read-YesNo 'Delete legacy .claude/rules/ copies anyway? (your edits will be lost; fresh copies go to .claude/rules-1c/)' $false
+        }
+    }
+    if ($proceedClaudeLegacy -and $claudeLegacyKeys.Count -gt 0) {
+        foreach ($k in $claudeLegacyKeys) {
+            $abs = Join-Path $Root $k
+            if (Test-Path $abs) { Remove-Item -Force $abs -ErrorAction SilentlyContinue }
+            $manifest.files.Remove($k)
+        }
+        $claudeRulesDir = Join-Path $Root '.claude/rules'
+        if (Test-Path $claudeRulesDir) {
+            $remaining = Get-ChildItem -File -Recurse $claudeRulesDir -ErrorAction SilentlyContinue
+            if (-not $remaining -or $remaining.Count -eq 0) {
+                Remove-Item -Recurse -Force $claudeRulesDir -ErrorAction SilentlyContinue
+            }
+        }
+        Write-Info "Migrated: removed $($claudeLegacyKeys.Count) managed entries from legacy .claude/rules/ (on-demand rules now live in .claude/rules-1c/)"
     }
 
     # Snapshot every path we currently track, before the per-update prune below
@@ -4340,6 +4671,9 @@ function Invoke-Update {
 
     Write-Manifest -Root $Root -Manifest $manifest
 
+    Write-Section 'OpenCode agent frontmatter gate'
+    Assert-OpenCodeAgentFrontmatter -Root $Root
+
     Write-Section 'Report'
     Write-Info 'Update complete.'
     $forced = @($script:ForcedThisRun)
@@ -4353,6 +4687,7 @@ function Invoke-Update {
         Write-Warn '  To pull the shipped version for these files, re-run `update -Force` (all of them) or `update -ForcePaths <path>[,<path>...]` (specific files, comma-separated). Your current edits to those files will be replaced.'
     }
     if (-not $hadEconomyCommand) { Write-EconomyModeAnnouncement }
+    if (-not $hadRulesModelCommand) { Write-RulesModelAnnouncement -Root $Root }
     Write-RestartRecommendation -ActiveTools $activeTools -McpCount $manifest.mcpServers.Count
 }
 
@@ -4419,19 +4754,28 @@ function Invoke-Add {
 
     $manifest.updatedAt = [datetime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
     Write-Manifest -Root $Root -Manifest $manifest
+
+    Write-Section 'OpenCode agent frontmatter gate'
+    Assert-OpenCodeAgentFrontmatter -Root $Root
+
     Write-Info "Added rules for $NewTool."
     Write-RestartRecommendation -ActiveTools $activeTools -McpCount $manifest.mcpServers.Count
 }
 
-# Strip ONLY the top-level `mcp` key from a SHARED tool config that the
-# installer deep-merged into (opencode.json / .kilo/kilo.json). Deleting the
-# whole file on `remove` would destroy the user's own config (model, theme,
-# instructions, skills.paths, permissions…). If after removing `mcp` nothing
-# meaningful is left (empty, or only a `$schema` marker the installer added),
-# delete the now-pointless file.
+# Strip ONLY the top-level merge key from a SHARED tool config that the
+# installer deep-merged into (opencode.json / .kilo/kilo.json → `mcp`;
+# `.qwen/settings.json` → `mcpServers`). Deleting the whole file on `remove`
+# would destroy the user's own config (model, theme, instructions,
+# skills.paths, permissions…). If after removing the key nothing meaningful
+# is left (empty, or only a `$schema` marker the installer added), delete
+# the now-pointless file.
 function Remove-McpKeyFromConfig {
-    param([string]$Path)
+    param(
+        [string]$Path,
+        [string]$Key = 'mcp'
+    )
     if (-not (Test-Path $Path)) { return }
+    if (-not $Key) { $Key = 'mcp' }
     try {
         $raw = Get-Content -Path $Path -Raw -ErrorAction Stop
         $obj = $raw | ConvertFrom-Json -ErrorAction Stop
@@ -4442,7 +4786,7 @@ function Remove-McpKeyFromConfig {
     }
     $kept = [ordered]@{}
     foreach ($prop in $obj.PSObject.Properties) {
-        if ($prop.Name -eq 'mcp') { continue }
+        if ($prop.Name -eq $Key) { continue }
         $kept[$prop.Name] = $prop.Value
     }
     $meaningful = @($kept.Keys | Where-Object { $_ -ne '$schema' })
@@ -4451,6 +4795,14 @@ function Remove-McpKeyFromConfig {
         return
     }
     Write-TextFile -Path $Path -Content ((ConvertTo-Json $kept -Depth 20) + "`n")
+}
+
+function Get-MergedMcpKey {
+    param($Entry)
+    if ($Entry -is [System.Collections.IDictionary] -and $Entry.Contains('mergeKey') -and $Entry['mergeKey']) {
+        return [string]$Entry['mergeKey']
+    }
+    return 'mcp'
 }
 
 # True when a manifest file entry marks a shared, deep-merged MCP config
@@ -4474,12 +4826,17 @@ function Invoke-Remove {
         $toolPrefixes = @(".$ScopeTool/")
         # Claude uses `.claude/` but also generates `CLAUDE.md` entry; Codex uses `.codex/` + `AGENTS.md` edits; handle per-tool cleanup:
         switch ($ScopeTool) {
-            'claude-code' { $toolPrefixes = @('.claude/', 'CLAUDE.md', '.mcp.json') }
-            'codex'       { $toolPrefixes = @('.codex/') }
-            'opencode'    { $toolPrefixes = @('.opencode/', 'opencode.json') }
-            'kilocode'    { $toolPrefixes = @('.kilo/', '.kilocode/') }
-            'cursor'      { $toolPrefixes = @('.cursor/') }
-            'other'       { $toolPrefixes = @('.ai-agent/') }
+            'claude-code'   { $toolPrefixes = @('.claude/', 'CLAUDE.md', '.mcp.json') }
+            'command-code'  { $toolPrefixes = @('.commandcode/', '.mcp.json') }
+            'codex'         { $toolPrefixes = @('.codex/') }
+            'opencode'      { $toolPrefixes = @('.opencode/', 'opencode.json') }
+            'kilocode'      { $toolPrefixes = @('.kilo/', '.kilocode/') }
+            'kimi'          { $toolPrefixes = @('.kimi-code/', '.kimi/') }
+            'qwen'          { $toolPrefixes = @('.qwen/', 'QWEN.md') }
+            'cline'         { $toolPrefixes = @('.cline/', '.clinerules/') }
+            'pi'            { $toolPrefixes = @('.pi/') }
+            'cursor'        { $toolPrefixes = @('.cursor/') }
+            'other'         { $toolPrefixes = @('.ai-agent/') }
         }
         $toRemove = @()
         foreach ($rel in @($manifest.files.Keys)) {
@@ -4515,9 +4872,10 @@ function Invoke-Remove {
             }
             $abs = Resolve-ManifestPath -Root $Root -Rel $rel
             if (Test-MergedMcpEntry $entry) {
-                # Shared config (opencode.json / .kilo/kilo.json): strip the
-                # `mcp` key only, never delete the user's whole config.
-                Remove-McpKeyFromConfig -Path $abs
+                # Shared config (opencode.json / .kilo/kilo.json /
+                # `.qwen/settings.json`): strip the merge key only, never
+                # delete the user's whole config.
+                Remove-McpKeyFromConfig -Path $abs -Key (Get-MergedMcpKey $entry)
             }
             elseif (Test-Path $abs) {
                 Remove-Item -Force $abs -ErrorAction SilentlyContinue
@@ -4555,9 +4913,10 @@ function Invoke-Remove {
             }
             $abs = Resolve-ManifestPath -Root $Root -Rel $rel
             if (Test-MergedMcpEntry $entry) {
-                # Shared config (opencode.json / .kilo/kilo.json): strip the
-                # `mcp` key only, never delete the user's whole config.
-                Remove-McpKeyFromConfig -Path $abs
+                # Shared config (opencode.json / .kilo/kilo.json /
+                # `.qwen/settings.json`): strip the merge key only, never
+                # delete the user's whole config.
+                Remove-McpKeyFromConfig -Path $abs -Key (Get-MergedMcpKey $entry)
             }
             elseif (Test-Path $abs) {
                 Remove-Item -Force $abs -ErrorAction SilentlyContinue
@@ -4567,11 +4926,22 @@ function Invoke-Remove {
             Write-Info ("Kept (user/project files): " + (($keptTemplates | Sort-Object) -join ', '))
         }
         Remove-Item -Force (Join-Path $Root $script:ManifestFileName) -ErrorAction SilentlyContinue
-        # Clean up empty per-tool directories
+        # Clean up empty per-tool directories. Tool id ≠ directory name for several
+        # adapters (kilocode→.kilo, kimi→.kimi-code, command-code→.commandcode,
+        # other→.ai-agent), so map explicitly instead of ".$t".
         $cleanupDirs = @('.ai-rules')
         foreach ($t in $manifest.tools) {
-            if ($t -eq 'other') { $cleanupDirs += '.ai-agent' }
-            else { $cleanupDirs += ".$t" }
+            switch ($t) {
+                'other'        { $cleanupDirs += '.ai-agent' }
+                'kilocode'     { $cleanupDirs += '.kilo'; $cleanupDirs += '.kilocode' }
+                'kimi'         { $cleanupDirs += '.kimi-code'; $cleanupDirs += '.kimi' }
+                'command-code' { $cleanupDirs += '.commandcode' }
+                'claude-code'  { $cleanupDirs += '.claude' }
+                'qwen'         { $cleanupDirs += '.qwen' }
+                'cline'        { $cleanupDirs += '.cline'; $cleanupDirs += '.clinerules' }
+                'pi'           { $cleanupDirs += '.pi' }
+                default        { $cleanupDirs += ".$t" }
+            }
         }
         foreach ($rel in $cleanupDirs) {
             $dir = Join-Path $Root $rel
@@ -4605,6 +4975,20 @@ function Invoke-Doctor {
     else {
         Write-Warn "Mismatches: $($verify.Mismatches.Count)"
         $verify.Mismatches | ForEach-Object { Write-Warn "  $_" }
+    }
+
+    Write-Section 'OpenCode agent frontmatter'
+    $ocAgents = Test-OpenCodeAgentFrontmatter -Root $Root
+    if ($ocAgents.Skipped) {
+        Write-Info 'SKIP — no .opencode/agent(s)/ directory.'
+    }
+    elseif ($ocAgents.Ok) {
+        Write-Info "OK — $($ocAgents.Checked) agent file(s); no tools arrays."
+    }
+    else {
+        Write-Err "FAIL — $($ocAgents.Violations.Count) agent file(s) still have a tools ARRAY (OpenCode will not start):"
+        $ocAgents.Violations | ForEach-Object { Write-Err "  $_" }
+        Write-Err 'Repair: install.ps1 update -Source <clone> -AssumeYes -ForcePaths .opencode/agent/*'
     }
 
     Write-Section 'User-modified files'
