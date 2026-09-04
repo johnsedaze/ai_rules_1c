@@ -268,6 +268,8 @@ The Bash script has the same command set as the PowerShell installer:
 - Options: `--tool TOOL`, `--tools TOOL1,TOOL2`, `--source PATH|URL`, `--project-root PATH`, `--non-interactive`, `--assume-yes`.
 - `--source` accepts a local path or a URL; if a URL is supplied, the installer shallow‑clones it into a cache directory (`$TMPDIR/1c-rules-source-<hash>`) and re‑uses it on future runs. The URL mode requires `git` in `PATH`.
 - The installer is pure Bash with Python3 for YAML/JSON parsing; works on macOS (Homebrew/Xcode), most Linux distributions, and Windows WSL.
+- **`.dev.env` is placed but not filled in.** The Bash channel copies `.dev.env.example` when the file is missing and appends any keys a newer ruleset added (`USE_EDT`, `SUPPORT_*`), never overwriting existing values. It does **not** autodetect `PLATFORM_VERSION` / `PLATFORM_PATH` / `PREFIX` and never prompts — platform autodetection in `install.ps1` scans `C:\Program Files\1cv8\`, which has no portable Unix equivalent. The installer prints the list of empty blocking fields; fill them in manually or run `/initproject`.
+- **Secret MCP headers** declared via `headersFromEnv` (e.g. the Templates MCP `Authorization` from `MCP_OPERATOR_TOKEN`) are resolved from the installer's own environment, so the variable must be **exported** (`export MCP_OPERATOR_TOKEN=...`) before the run. A missing variable leaves the header out — read-only tools keep working, protected mutations do not.
 
 ### Security notes for CLI installers
 
