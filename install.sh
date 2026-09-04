@@ -51,6 +51,8 @@ AGENTS_MD_FILE_NAME='AGENTS.md'
 USER_RULES_FILE_NAME='USER-RULES.md'
 MEMORY_FILE_NAME='memory.md'
 LLM_RULES_FILE_NAME='LLM-RULES.md'
+DEV_ENV_FILE_NAME='.dev.env'
+DEV_ENV_EXAMPLE_NAME='.dev.env.example'
 SUPPORTED_TOOLS='cursor claude-code codex opencode kilocode kimi qwen command-code cline pi other'
 LAST_CHANNEL='bash'
 
@@ -1896,6 +1898,165 @@ place_root_templates() {
     done
 }
 
+# ---------------------------------------------------------------------------
+# .dev.env — project parameters, single source of truth for the 1C tooling.
+#
+# This is the reduced Bash-channel version of Place-DevEnv in install.ps1. It
+# deliberately does NOT autodetect PLATFORM_VERSION / PLATFORM_PATH / PREFIX
+# and never prompts: platform autodetection in install.ps1 scans
+# `C:\Program Files\1cv8\`, which has no portable Unix equivalent. Values are
+# left empty and reported, so the user (or /initproject) fills them in.
+#
+# Ownership rules match the PowerShell channel: the file belongs to the user
+# and project, so an existing one is NEVER overwritten — only registered in the
+# manifest as a placed-once template, and only missing keys are appended.
+# ---------------------------------------------------------------------------
+
+# Fields the IB-related commands treat as blocking while empty.
+DEV_ENV_CRITICAL_KEYS='PREFIX COMPANY DEVELOPER PLATFORM_VERSION PLATFORM_PATH INFOBASE_PATH EXTENSION_NAME'
+
+# Print the value of one key from a .dev.env file; empty when absent.
+dev_env_value() {
+    local path="$1" key="$2"
+    [[ -f "$path" ]] || return 0
+    python3 -c '
+import sys, re
+path, key = sys.argv[1], sys.argv[2]
+pat = re.compile(r"^" + re.escape(key) + r"=(.*)$")
+val = ""
+with open(path, encoding="utf-8") as f:
+    for line in f:
+        m = pat.match(line.rstrip("\n").rstrip("\r"))
+        if m: val = m.group(1).strip()
+print(val)
+' "$path" "$key" 2>/dev/null || true
+}
+
+# True when the key line exists at all (even with an empty value).
+dev_env_has_key() {
+    local path="$1" key="$2"
+    [[ -f "$path" ]] || return 1
+    grep -qE "^${key}=" "$path"
+}
+
+# Re-hash .dev.env in the manifest after an in-place edit.
+dev_env_refresh_hash() {
+    local root="$1"
+    local target="$root/$DEV_ENV_FILE_NAME"
+    local mf="$root/$MANIFEST_FILE_NAME"
+    [[ -f "$target" && -f "$mf" ]] || return 0
+    local has_entry
+    has_entry="$(python3 -c "import json,sys; m=json.load(open(sys.argv[1],encoding='utf-8')); print('1' if sys.argv[2] in m.get('files',{}) else '0')" "$mf" "$DEV_ENV_FILE_NAME" 2>/dev/null || echo '0')"
+    [[ "$has_entry" == '1' ]] || return 0
+    local hash
+    hash="$(file_sha256 "$target")"
+    manifest_patch "$root" "[{\"op\":\"set_file_entry\",\"rel\":\"$DEV_ENV_FILE_NAME\",\"entry\":{\"source\":\"$DEV_ENV_EXAMPLE_NAME\",\"template\":true,\"installedHash\":\"$hash\"}}]"
+}
+
+place_dev_env() {
+    local root="$1"
+    local source_root="$2"
+
+    local target="$root/$DEV_ENV_FILE_NAME"
+    local source="$source_root/$DEV_ENV_EXAMPLE_NAME"
+
+    if [[ -f "$target" ]]; then
+        # Existing file: never touched, only registered so update/remove know
+        # it is a placed-once template.
+        local mf="$root/$MANIFEST_FILE_NAME"
+        if [[ -f "$mf" ]]; then
+            local has_entry
+            has_entry="$(python3 -c "import json,sys; m=json.load(open(sys.argv[1],encoding='utf-8')); print('1' if sys.argv[2] in m.get('files',{}) else '0')" "$mf" "$DEV_ENV_FILE_NAME" 2>/dev/null || echo '0')"
+            if [[ "$has_entry" == '0' ]]; then
+                local hash
+                hash="$(file_sha256 "$target")"
+                manifest_patch "$root" "[{\"op\":\"set_file_entry\",\"rel\":\"$DEV_ENV_FILE_NAME\",\"entry\":{\"source\":\"$DEV_ENV_EXAMPLE_NAME\",\"template\":true,\"installedHash\":\"$hash\"}}]"
+                write_info "  registered existing $DEV_ENV_FILE_NAME (не перезаписывается при update)"
+            fi
+        fi
+        return 0
+    fi
+
+    if [[ ! -f "$source" ]]; then
+        write_warn "$DEV_ENV_EXAMPLE_NAME not found in source: $source — .dev.env не создан"
+        return 0
+    fi
+
+    cp "$source" "$target"
+    local hash
+    hash="$(file_sha256 "$target")"
+    manifest_patch "$root" "[{\"op\":\"set_file_entry\",\"rel\":\"$DEV_ENV_FILE_NAME\",\"entry\":{\"source\":\"$DEV_ENV_EXAMPLE_NAME\",\"template\":true,\"installedHash\":\"$hash\"}}]"
+    write_info "  placed (template, will not be overwritten on update): $DEV_ENV_FILE_NAME"
+
+    # Report the blocking fields instead of prompting. The Bash channel has no
+    # platform autodetection, so these are always empty on a fresh copy.
+    local empty=''
+    for key in $DEV_ENV_CRITICAL_KEYS; do
+        local v
+        v="$(dev_env_value "$target" "$key")"
+        [[ -z "$v" ]] && empty="${empty:+$empty, }$key"
+    done
+    if [[ -n "$empty" ]]; then
+        write_warn "  $DEV_ENV_FILE_NAME: не заполнены ключевые поля: $empty."
+        write_warn "  Bash-канал не определяет параметры платформы автоматически — заполните их вручную или запустите /initproject. Без них команды работы с ИБ (db-*, epf-*, /update1cbase) работать не будут."
+    fi
+}
+
+ensure_edt_usage_setting() {
+    # Migration for a .dev.env that predates USE_EDT. Like install.ps1 it never
+    # asks: this runs inside an otherwise unattended update/add. The
+    # conservative default is written and reported; /installtools and
+    # /install-edt-mcp own the actual question.
+    local root="$1"
+    local target="$root/$DEV_ENV_FILE_NAME"
+    [[ -f "$target" ]] || return 0
+
+    local current
+    current="$(dev_env_value "$target" 'USE_EDT' | tr 'A-Z' 'a-z')"
+    [[ "$current" == 'true' || "$current" == 'false' ]] && return 0
+
+    if dev_env_has_key "$target" 'USE_EDT'; then
+        python3 -c '
+import sys, re
+path = sys.argv[1]
+with open(path, encoding="utf-8") as f: text = f.read()
+text = re.sub(r"(?m)^USE_EDT=.*$", "USE_EDT=false", text)
+with open(path, "w", encoding="utf-8") as f: f.write(text)
+' "$target"
+    else
+        printf '\n# Uses 1C:EDT in this project; true activates the EDT branch of the ruleset\n# (content/rules/edt-workflow.md) and the EDT-MCP recommendation in /installtools.\nUSE_EDT=false\n' >> "$target"
+    fi
+
+    dev_env_refresh_hash "$root"
+    write_info "  $DEV_ENV_FILE_NAME: added USE_EDT=false (по умолчанию 1C:EDT не используется)"
+    write_info "    Проект разрабатывается в 1C:EDT? Запустите /installtools или /install-edt-mcp — они спросят и запишут USE_EDT=true (можно просто исправить значение в .dev.env)."
+}
+
+ensure_support_settings() {
+    # Migration for a .dev.env that predates the support channel (/support,
+    # /supportstatus). Appends the missing keys as empty placeholders and never
+    # touches a filled-in value: SUPPORT_KEY is a secret shipped with the MCP
+    # distribution, so there is nothing to autofill and nothing to ask.
+    local root="$1"
+    local target="$root/$DEV_ENV_FILE_NAME"
+    [[ -f "$target" ]] || return 0
+
+    local missing=''
+    for key in SUPPORT_KEY SUPPORT_EMAIL SUPPORT_API_URL; do
+        dev_env_has_key "$target" "$key" || missing="${missing:+$missing }$key"
+    done
+    [[ -z "$missing" ]] && return 0
+
+    printf '\n# Support channel for MCP / ruleset problem reports (/support, /supportstatus).\n# SUPPORT_KEY comes with the MCP distribution (config.env, section 6);\n# SUPPORT_EMAIL is your working e-mail. Both empty = the channel is off.\n' >> "$target"
+    for key in $missing; do
+        printf '%s=\n' "$key" >> "$target"
+    done
+
+    dev_env_refresh_hash "$root"
+    write_info "  $DEV_ENV_FILE_NAME: added support keys ($(echo $missing | tr ' ' ',')) — пустые значения"
+    write_info "    Заполните SUPPORT_KEY из config.env дистрибутива MCP и свой SUPPORT_EMAIL, иначе /support ничего не отправит."
+}
+
 # ============================================================================
 # SECTION 15: VERIFY
 # ============================================================================
@@ -2064,6 +2225,11 @@ PY
 
     write_section 'Phase 8b: Root templates (USER-RULES.md, memory.md, LLM-RULES.md)'
     place_root_templates "$root" "$source_root"
+
+    write_section 'Phase 8c: .dev.env (project parameters)'
+    place_dev_env "$root" "$source_root"
+    ensure_edt_usage_setting "$root"
+    ensure_support_settings "$root"
 
     write_section 'Phase 9: Manifest'
     write_info ".ai-rules.json written"
@@ -2271,6 +2437,11 @@ PY
     write_section 'Root templates (update)'
     place_root_templates "$root" "$source_root"
 
+    write_section '.dev.env (update — placed only if missing)'
+    place_dev_env "$root" "$source_root"
+    ensure_edt_usage_setting "$root"
+    ensure_support_settings "$root"
+
     local version
     version="$(get_source_version "$source_root")"
     local ts
@@ -2375,6 +2546,11 @@ cmd_add() {
     all_tools="$(python3 -c "import json; m=json.load(open('$root/$MANIFEST_FILE_NAME')); print(' '.join(m.get('tools',[])))")"
     update_agents_md "$root" "$source_root" "$all_tools"
     place_root_templates "$root" "$source_root"
+
+    # `.dev.env` may hold values the newly added tool's MCP config needs.
+    place_dev_env "$root" "$source_root"
+    ensure_edt_usage_setting "$root"
+    ensure_support_settings "$root"
 
     local ts
     ts="$(python3 -c "import datetime; print(datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'))")"
@@ -2497,15 +2673,31 @@ PY
         write_info "Removed $scope_tool ($remove_count files)."
     else
         write_info "Removing all installed files."
-        python3 - "$manifest_json" "$root" <<'PY'
+        # Placed-once templates (USER-RULES.md, memory.md, LLM-RULES.md,
+        # .dev.env) belong to the user/project — `remove` never deletes them
+        # (AGENT-INSTALL.md -> Update / add / remove), same as install.ps1.
+        local kept_templates
+        kept_templates="$(python3 - "$manifest_json" "$root" <<'PY'
 import json,sys,os
 m=json.loads(sys.argv[1])
 root=sys.argv[2]
-for rel in m.get('files',{}):
+kept=[]
+for rel, entry in m.get('files',{}).items():
+    if isinstance(entry, dict) and entry.get('template'):
+        kept.append(rel)
+        continue
     abs_path=os.path.expanduser(rel) if rel.startswith('~') else os.path.join(root,rel)
     if os.path.isfile(abs_path):
         os.remove(abs_path)
+print('\n'.join(sorted(kept)))
 PY
+)"
+        if [[ -n "$kept_templates" ]]; then
+            write_info "Kept (user-owned templates):"
+            while IFS= read -r kt; do
+                [[ -n "$kt" ]] && write_info "  $kt"
+            done <<< "$kept_templates"
+        fi
         rm -f "$root/$MANIFEST_FILE_NAME"
 
         # Clean up empty dirs
