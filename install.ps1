@@ -5206,27 +5206,38 @@ try {
         default  { throw "Unknown command: $Command" }
     }
 }
-finally {
-    # Add note about refresh-openspec-bundle.ps1 after successful init/update
-    if ($Command -match '^(init|update)$') {
-        $scriptPath = $MyInvocation.ScriptName
-        if (-not $scriptPath) { $scriptPath = $PSCommandPath }
-        if (-not $scriptPath) { $scriptPath = $script:MyInvocation.MyCommand.Path }
-        if ($scriptPath) {
-            $scriptDir = Split-Path -Parent $scriptPath
-            $refreshScript = Join-Path $scriptDir 'tools/refresh-openspec-bundle.ps1'
-            $refreshScriptUnix = Join-Path $scriptDir 'tools/refresh-openspec-bundle.sh'
-            if ((Test-Path $refreshScript) -or (Test-Path $refreshScriptUnix)) {
-                Write-Host ''
-                Write-Host 'Note: To refresh the bundled OpenSpec snapshots (content/openspec-bundle/), run:'
-                if (Test-Path $refreshScript -and $env:OS -match 'Windows') {
-                    Write-Host "  .\tools\refresh-openspec-bundle.ps1 [-DryRun]"
-                }
-                elseif (Test-Path $refreshScriptUnix) {
-                    Write-Host "  ./tools/refresh-openspec-bundle.sh [--dry-run]"
-                }
-                Write-Host 'This requires Node.js + npm and the OpenSpec CLI installed globally.'
+catch {
+    Write-Err $_.Exception.Message
+    if ($_.ScriptStackTrace) { Write-Host $_.ScriptStackTrace -ForegroundColor DarkGray }
+    exit 1
+}
+
+# Note about refresh-openspec-bundle after a successful init/update. Placed
+# after the try/catch so it never prints on a failed run, and never masks the
+# non-zero exit code the catch block above is responsible for.
+if ($Command -match '^(init|update)$') {
+    $scriptPath = $MyInvocation.ScriptName
+    if (-not $scriptPath) { $scriptPath = $PSCommandPath }
+    if (-not $scriptPath) { $scriptPath = $script:MyInvocation.MyCommand.Path }
+    if ($scriptPath) {
+        $scriptDir = Split-Path -Parent $scriptPath
+        $refreshScript = Join-Path $scriptDir 'tools/refresh-openspec-bundle.ps1'
+        $refreshScriptUnix = Join-Path $scriptDir 'tools/refresh-openspec-bundle.sh'
+        $hasPs = Test-Path $refreshScript
+        $hasSh = Test-Path $refreshScriptUnix
+        if ($hasPs -or $hasSh) {
+            Write-Host ''
+            Write-Host 'Note: To refresh the bundled OpenSpec snapshots (content/openspec-bundle/), run:'
+            if ($hasPs -and ($IsWindows -or $env:OS -match 'Windows')) {
+                Write-Host "  .\tools\refresh-openspec-bundle.ps1 [-DryRun]"
             }
+            elseif ($hasSh) {
+                Write-Host "  ./tools/refresh-openspec-bundle.sh [--dry-run]"
+            }
+            elseif ($hasPs) {
+                Write-Host "  pwsh ./tools/refresh-openspec-bundle.ps1 [-DryRun]"
+            }
+            Write-Host 'This requires Node.js + npm and the OpenSpec CLI installed globally.'
         }
     }
 }

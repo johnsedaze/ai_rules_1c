@@ -462,6 +462,7 @@ def servers_to_dict(servers):
         entry = OrderedDict()
         if s.get('url'): entry['url'] = s['url']
         if s.get('connectionId'): entry['connection_id'] = s['connectionId']
+        if s.get('headers'): entry['headers'] = s['headers']
         if s.get('description'): entry['description'] = s['description']
         if s.get('command'): entry['command'] = s['command']
         if s.get('args'): entry['args'] = s['args']
@@ -501,6 +502,7 @@ def mcp_config_kilocode(servers):
         if s.get('url'):
             entry['type'] = 'remote'
             entry['url'] = s['url']
+            if s.get('headers'): entry['headers'] = s['headers']
         elif s.get('command'):
             entry['type'] = 'local'
             entry['command'] = [s['command']] + list(s.get('args') or [])
@@ -556,6 +558,7 @@ def mcp_config_opencode(servers):
         if s.get('url'):
             entry['type'] = 'remote'
             entry['url'] = s['url']
+            if s.get('headers'): entry['headers'] = s['headers']
         elif s.get('command'):
             entry['type'] = 'local'
             entry['command'] = [s['command']] + list(s.get('args') or [])
@@ -572,6 +575,10 @@ def mcp_config_codex(servers):
         if s.get('url'): lines.append('url = ' + format_toml_string(s['url']))
         if s.get('connectionId'): lines.append('connection_id = ' + format_toml_string(s['connectionId']))
         if s.get('description'): lines.append('description = ' + format_toml_string(s['description']))
+        if s.get('headers'):
+            parts = [format_toml_string(k) + ' = ' + format_toml_string(str(v))
+                     for k, v in s['headers'].items()]
+            lines.append('http_headers = { ' + ', '.join(parts) + ' }')
         if s.get('command'):
             lines.append('command = ' + format_toml_string(s['command']))
             if s.get('args'): lines.append('args = ' + format_toml_array(s['args']))
@@ -858,6 +865,31 @@ if __name__ == '__main__':
             obj = json.load(f)
         print(json.dumps(obj.get('servers', []), ensure_ascii=False))
 
+    elif mode == 'resolve_mcp_headers':
+        # Mirrors Resolve-McpServerHeadersFromEnv in install.ps1. Secret
+        # headers are declared in the public catalogue by environment variable
+        # NAME, never by value; they are resolved in memory here, immediately
+        # before the local client configs are rendered. A missing variable
+        # leaves the header absent (read-only tools keep working) and is
+        # reported to the caller. Note the variable must be EXPORTED to reach
+        # this child process.
+        servers = json.loads(sys.stdin.read())
+        unresolved = []
+        for s in servers:
+            spec_map = s.get('headersFromEnv')
+            if not spec_map: continue
+            headers = OrderedDict((k, str(v)) for k, v in (s.get('headers') or {}).items())
+            for name, spec in spec_map.items():
+                env_name = spec.get('env') or ''
+                raw = os.environ.get(env_name, '')
+                if not raw.strip():
+                    unresolved.append(s['id'] + ':' + env_name)
+                    continue
+                headers[name] = (spec.get('prefix') or '') + raw
+            if headers: s['headers'] = headers
+            s.pop('headersFromEnv', None)
+        print(json.dumps(OrderedDict([('servers', servers), ('unresolved', unresolved)]), ensure_ascii=False))
+
     elif mode == 'json_patch':
         # Apply a set of JSON patch ops to manifest on stdin, write back
         # ops arrive as a second JSON doc in argv[2]
@@ -1017,6 +1049,11 @@ py_string_sha256() {
 
 py_read_mcp_servers() {
     _py3 read_mcp_servers "$1"
+}
+
+py_resolve_mcp_headers() {
+    # stdin: JSON array of servers. Prints {"servers":[...],"unresolved":[...]}
+    _py3 resolve_mcp_headers
 }
 
 py_scan_integrations() {
@@ -1544,6 +1581,20 @@ invoke_mcp_phase() {
 
     local servers_json
     servers_json="$(py_read_mcp_servers "$mcp_servers_file")"
+
+    # Resolve secret headers declared via `headersFromEnv` (e.g. the Templates
+    # MCP Authorization header from MCP_OPERATOR_TOKEN) before rendering any
+    # client config. Missing variables leave the header out: read-only tools
+    # still work, protected mutations do not.
+    local hdr_json unresolved_headers
+    hdr_json="$(printf '%s' "$servers_json" | py_resolve_mcp_headers)"
+    servers_json="$(printf '%s' "$hdr_json" | python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin)['servers'], ensure_ascii=False))")"
+    unresolved_headers="$(printf '%s' "$hdr_json" | python3 -c "import json,sys; print(', '.join(json.load(sys.stdin)['unresolved']))")"
+    if [[ -n "$unresolved_headers" ]]; then
+        write_warn "  MCP config: не заданы переменные для защищённых заголовков: $unresolved_headers."
+        write_warn "  Читающие инструменты останутся доступны, но защищённые мутации Templates (remember, add_template, plugin_reload) потребуют повторного запуска установщика с экспортированным MCP_OPERATOR_TOKEN (export MCP_OPERATOR_TOKEN=...)."
+    fi
+
     local installed_ids
     installed_ids="$(printf '%s' "$servers_json" | python3 -c "import json,sys; s=json.load(sys.stdin); print(json.dumps([x['id'] for x in s]))")"
 
@@ -1884,6 +1935,38 @@ print(json.dumps({'ok': len(mismatches) == 0, 'count': count, 'mismatches': mism
 PY
 }
 
+# Offer the single tool-installation entry point after a first install, and on
+# update only when the ruleset brought one or more NEW standalone installers.
+# Mirrors Write-InstallToolsAnnouncement in install.ps1. The slash command does
+# its own detection and asks before changing anything.
+write_install_tools_announcement() {
+    local new_installers="${1:-}"
+
+    write_info ""
+    if [[ -n "$new_installers" ]]; then
+        write_info "Добавлены новые установщики инструментов: $new_installers."
+    fi
+    write_info "После перезапуска AI-клиента запустите /installtools — команда сначала предложит установить приобретённый комплект 1С MCP, затем покажет Cognee, EDT-MCP и инструменты UI-автоматизации."
+    write_info "Каждый пункт устанавливается только после подтверждения; отдельные команды установки также доступны."
+}
+
+# Basenames of the `install*.md` commands recorded in the manifest, read from
+# the manifest JSON on stdin. Used to tell a genuinely new installer from a
+# routine rules refresh. It deliberately takes the JSON rather than a path:
+# cmd_update clears every non-userModified file entry before the place phase,
+# so a snapshot read from disk at that point would always come back empty.
+known_tool_installers() {
+    python3 -c '
+import json, os, re, sys
+try:
+    m = json.loads(sys.stdin.read())
+except Exception:
+    sys.exit(0)
+names = {os.path.basename(k) for k in (m.get("files") or {})}
+print(" ".join(sorted(n for n in names if re.match(r"^install.*\.md$", n))))
+' 2>/dev/null || true
+}
+
 # ============================================================================
 # SECTION 16: COMMANDS
 # ============================================================================
@@ -2006,6 +2089,8 @@ PY
     mcp_count="$(python3 -c "import json; m=json.load(open('$root/$MANIFEST_FILE_NAME')); print(len(m.get('mcpServers',[])))")"
     write_info "  Files written: $file_count"
     write_info "  MCP servers: $mcp_count"
+
+    write_install_tools_announcement
 }
 
 # ---- update -----------------------------------------------------------------
@@ -2036,6 +2121,12 @@ cmd_update() {
 
     local active_tools
     active_tools="$(printf '%s' "$manifest_json" | python3 -c "import json,sys; print(' '.join(json.load(sys.stdin).get('tools',[])))")"
+
+    # Snapshot the tool installers this project already had, while the
+    # pre-update manifest is still intact, so a newly added one can be
+    # reported at the end without nagging on every routine update.
+    local known_installers_before
+    known_installers_before="$(printf '%s' "$manifest_json" | known_tool_installers)"
 
     # Migration: remove legacy .ai-rules/rules/ entries
     write_section 'Migration: legacy .ai-rules/rules/ mirror'
@@ -2187,6 +2278,20 @@ PY
     manifest_patch "$root" "[{\"op\":\"set\",\"path\":[\"updatedAt\"],\"value\":\"$ts\"},{\"op\":\"set\",\"path\":[\"lastChannel\"],\"value\":\"$LAST_CHANNEL\"},{\"op\":\"set\",\"path\":[\"version\"],\"value\":\"$version\"}]"
 
     write_info 'Update complete.'
+
+    local current_installers new_installers seen
+    current_installers="$(cd "$source_root/content/commands" 2>/dev/null && ls -1 install*.md 2>/dev/null | tr '\n' ' ' || true)"
+    new_installers=''
+    for c in $current_installers; do
+        seen=0
+        for k in $known_installers_before; do
+            [[ "$c" == "$k" ]] && { seen=1; break; }
+        done
+        [[ $seen -eq 0 ]] && new_installers="${new_installers:+$new_installers, }$c"
+    done
+    if [[ -n "$new_installers" ]]; then
+        write_install_tools_announcement "$new_installers"
+    fi
 }
 
 # Helper: scan foreign files for given tools
