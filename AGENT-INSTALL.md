@@ -46,7 +46,7 @@ The agent SHOULD NOT read the body of every rule/agent/command/skill file before
 
 Use this lean sequence:
 
-1. **Resolve the source.** If only a URL was given, clone it locally (`git clone https://github.com/johnsedaze/ai_rules_1c.git <cache-dir>/1c-rules`) or reuse an existing clone.
+1. **Resolve the source.** If only a URL was given, clone it locally (`git clone https://github.com/comol/ai_rules_1c.git <cache-dir>/1c-rules`) or reuse an existing clone.
 
 2. **Read adapters only.** For each active tool open `adapters/<tool>.yaml` from the clone. These files are small and define, in a closed schema:
    - `detection` — how to confirm the tool is active.
@@ -243,7 +243,7 @@ If the agent cannot do the placement (no FS access, restricted environment, CI r
 ### PowerShell (`install.ps1`) — Windows
 
 ```powershell
-git clone https://github.com/johnsedaze/ai_rules_1c.git $env:TEMP\1c-rules
+git clone https://github.com/comol/ai_rules_1c.git $env:TEMP\1c-rules
 & $env:TEMP\1c-rules\install.ps1 init -Source $env:TEMP\1c-rules
 ```
 
@@ -254,16 +254,15 @@ The script implements the protocol above. Notes:
 - Commands: `init` / `update` / `add <tool>` / `remove [<tool>]` / `doctor` (read-only diagnostic) / `eject` (delete the manifest, leave files in place).
 - Flags: `-Tools cursor,claude-code,kimi` (explicit list), `-NonInteractive` (auto-resolve prompts), `-AssumeYes` (answer yes to confirmations but still pause on destructive conflicts unless `-NonInteractive` is also set), `-Force` (on `update`: overwrite user-modified files with the shipped version), `-ForcePaths <path>[,<path>…]` (on `update`: restrict the overwrite to the listed project-relative paths, comma-separated; exact match or `*`/`?` wildcard; implies `-Force`), `-McpMode auto|managed|external` (MCP phase behaviour — see *External MCP installation* above; default `auto` detects an external installation and leaves MCP configs untouched when found).
 
-### Bash (`install.sh`) — Unix  / macOS / Linux
- 
+### Bash (`install.sh`) — Unix / macOS / Linux
+
 ```bash
-git clone https://github.com/johnsedaze/ai_rules_1c.git /tmp/1c-rules
+git clone https://github.com/comol/ai_rules_1c.git /tmp/1c-rules
 cd /tmp/1c-rules
 ./install.sh init --source /tmp/1c-rules
 ```
 
-The Bash script has the same command set as PowerShell installer:
-Always run the script as a local file. If a no-`git` environment forces a one-liner, use a script block — it preserves `param(...)` semantics — but the script still needs a resolvable `-Source` value:
+The Bash script has the same command set as the PowerShell installer:
 
 - Commands: `init`, `update`, `add`, `remove`, `doctor`, `eject`.
 - Options: `--tool TOOL`, `--tools TOOL1,TOOL2`, `--source PATH|URL`, `--project-root PATH`, `--non-interactive`, `--assume-yes`.
@@ -278,15 +277,15 @@ Both CLI installers (`install.ps1`, `install.sh`) must be cloned locally before 
 
   ```powershell
   # WRONG — will throw "Unexpected attribute 'CmdletBinding'"
-  iex (irm https://raw.githubusercontent.com/johnsedaze/ai_rules_1c/main/install.ps1)
-  iex "$(irm https://raw.githubusercontent.com/johnsedaze/ai_rules_1c/main/install.ps1) init"
+  iex (irm https://raw.githubusercontent.com/comol/ai_rules_1c/main/install.ps1)
+  iex "$(irm https://raw.githubusercontent.com/comol/ai_rules_1c/main/install.ps1) init"
   ```
 
   Always clone first and run the script as a file. If a no‑`git` environment forces a one‑liner, use a script block — it preserves `param(...)` semantics — but still requires a local clone:
 
   ```powershell
   $tmp = Join-Path $env:TEMP '1c-rules'
-  git clone https://github.com/johnsedaze/ai_rules_1c.git $tmp
+  git clone https://github.com/comol/ai_rules_1c.git $tmp
   & ([scriptblock]::Create((Get-Content "$tmp\install.ps1" -Raw))) init -Source $tmp
   ```
 
@@ -294,13 +293,13 @@ Both CLI installers (`install.ps1`, `install.sh`) must be cloned locally before 
 
   ```bash
   # Not officially supported but works if you are already inside a clone:
-  curl -fsSL https://raw.githubusercontent.com/johnsedaze/ai_rules_1c/main/install.sh | bash -s init --source .
+  curl -fsSL https://raw.githubusercontent.com/comol/ai_rules_1c/main/install.sh | bash -s init --source .
   ```
 
   The installer will refuse to run if `--source` points to a URL it cannot clone and `content/` is missing. The safe, reproducible method:
 
   ```bash
-  git clone https://github.com/johnsedaze/ai_rules_1c.git /tmp/1c-rules
+  git clone https://github.com/comol/ai_rules_1c.git /tmp/1c-rules
   cd /tmp/1c-rules
   ./install.sh init --source /tmp/1c-rules
   ```

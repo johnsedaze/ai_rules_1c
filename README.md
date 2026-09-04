@@ -12,8 +12,7 @@
 - **Claude Code** (`.claude/rules-1c/`, `.claude/agents/`, `.claude/commands/`)
 - **OpenAI Codex** (`.codex/rules/`, `.codex/agents/`, `.codex/skills/`, `.codex/config.toml`; slash-команды ставятся в пользовательский `~/.codex/prompts/`)
 - **OpenCode** (`.opencode/command/`)
-- **Kilo Code** (`.kilo/rules/`, `.kilo/agents/`, `.kilo/workflows/`)
-- **Kilo Code** (`.kilo/rules-1c/` for on-demand rules referenced by `AGENTS.md`, `.kilo/commands/`, `.kilo/agents/`, `.kilo/skills/`)
+- **Kilo Code** (`.kilo/rules-1c/` for on-demand rules referenced by `AGENTS.md`, `.kilo/commands/`, `.kilo/agents/`, `.kilo/skills/`; MCP в `.kilo/kilo.json`, OpenSpec-воркфлоу — в `.kilo/workflows/`)
 - **Kimi Code CLI** (`.kimi-code/rules-1c/`, `.kimi-code/agents/`, `.kimi-code/skills/`, `.kimi-code/mcp.json`; slash-команды доступны через Skills/Plugins Kimi)
 - **Qwen Code** (`.qwen/rules-1c/`, `.qwen/agents/`, `.qwen/commands/`, `.qwen/skills/`; MCP в `.qwen/settings.json` под `mcpServers` с `httpUrl`; entry stub `QWEN.md` → `AGENTS.md`)
 - **Command Code** (`.commandcode/rules-1c/`, `.commandcode/agents/`, `.commandcode/commands/`, `.commandcode/skills/`; MCP в корневом `.mcp.json`, общий с Claude Code)
@@ -27,7 +26,7 @@
 
 Установка спроектирована как протокол, который выполняет сам ИИ-агент. Откройте проект в любимом ИИ-агенте (Cursor / Claude Code / Codex / OpenCode / Kilo Code / Kimi / Qwen / Command Code / Cline / Pi) и отправьте сообщение:
 
-> Установи правила из `https://github.com/johnsedaze/ai_rules_1c` по `AGENT-INSTALL.md`.
+> Установи правила из `https://github.com/comol/ai_rules_1c` по `AGENT-INSTALL.md`.
 
 Всё. Остальное — клонирование репозитория, определение активных инструментов, миграция существующих `AGENTS.md` / `CLAUDE.md`, запросы перед разрушительными действиями — описано в [`AGENT-INSTALL.md`](AGENT-INSTALL.md), который агент прочитает сам.
 
@@ -38,25 +37,25 @@
 1. **PowerShell-скрипт `install.ps1`** (Windows):
    
    ```powershell
-   git clone https://github.com/johnsedaze/ai_rules_1c.git $env:TEMP\1c-rules
+   git clone https://github.com/comol/ai_rules_1c.git $env:TEMP\1c-rules
    & $env:TEMP\1c-rules\install.ps1 init -Source $env:TEMP\1c-rules
    ```
 
 2. **Bash-скрипт `install.sh`** (Unix/macOS/Linux):
 
    ```bash
-   git clone https://github.com/johnsedaze/ai_rules_1c.git /tmp/1c-rules
+   git clone https://github.com/comol/ai_rules_1c.git /tmp/1c-rules
    ./install.sh init --source /tmp/1c-rules
    ```
 
 Параметр `-Source` / `--source` также принимает URL напрямую — в этом случае установщик сам делает shallow-clone в кэш под временную директорию (ключ кэша — хэш URL) и переиспользует его при повторных запусках; требует `git` в `PATH`:
 
 ```powershell
-.\install.ps1 init -Source https://github.com/johnsedaze/ai_rules_1c
+.\install.ps1 init -Source https://github.com/comol/ai_rules_1c
 ```
 
 ```bash
-./install.sh init --source https://github.com/johnsedaze/ai_rules_1c
+./install.sh init --source https://github.com/comol/ai_rules_1c
 Имя локальной папки произвольное: в примерах используется `1c-rules`, но установленный или рабочий каталог может называться иначе.
 
 Параметр `-Source` также принимает URL напрямую — в этом случае установщик сам делает shallow-clone в кэш под `$env:TEMP` (ключ кэша — хэш URL) и переиспользует его при повторных запусках; требует `git` в `PATH`:
